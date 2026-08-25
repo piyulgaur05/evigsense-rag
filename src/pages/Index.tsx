@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FileText, Search, MessageSquare, Shield } from "lucide-react";
+import { FileText, Search, MessageSquare, Shield, Sparkles } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -24,10 +24,10 @@ const Index = () => {
         <div className="max-w-4xl mx-auto text-center space-y-8">
           <div className="flex items-center justify-center gap-3 mb-8">
             <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
-              <FileText className="h-8 w-8 text-primary-foreground" />
+              <Sparkles className="h-8 w-8 text-primary-foreground" />
             </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              EVIGSENSE
+              Jyoma AI
             </h1>
           </div>
 

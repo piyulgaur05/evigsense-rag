@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { FileText, Loader2 } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -43,9 +43,9 @@ const Auth = () => {
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-            <FileText className="h-6 w-6 text-primary-foreground" />
+            <Sparkles className="h-6 w-6 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold">EVIGSENSE</h1>
+          <h1 className="text-3xl font-bold">Jyoma AI</h1>
         </div>
 
         <Card>

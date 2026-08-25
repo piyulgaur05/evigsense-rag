@@ -298,7 +298,7 @@ serve(async (req) => {
     const messages: any[] = [
       { 
         role: 'system', 
-        content: `You are EVIGSENSE AI Assistant, an intelligent agentic system for document analysis and retrieval.
+        content: `You are Jyoma AI Assistant, an intelligent agentic system for document analysis and retrieval.
 
 CAPABILITIES:
 - Search and analyze user documents intelligently

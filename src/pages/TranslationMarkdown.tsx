@@ -353,7 +353,7 @@ ${html}
 
   return (
     <Layout>
-      <div className="p-4 md:p-6 space-y-4 w-full h-[calc(100vh-3.5rem)] flex flex-col">
+      <div className="p-4 md:p-6 space-y-4 w-full h-[calc(100vh-4rem)] flex flex-col">
         <div className="flex items-center gap-3">
           <Languages className="h-6 w-6 text-primary" />
           <div>
