@@ -20,9 +20,9 @@ services:
       JWT_EXP: 3600
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./volumes/db/init/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
-      - ./volumes/db/init/01-bootstrap-before-migrations.sql:/docker-entrypoint-initdb.d/01-bootstrap-before-migrations.sql:ro
-      - ./volumes/db/init/02-set-role-passwords.sh:/docker-entrypoint-initdb.d/02-set-role-passwords.sh:ro
+      - ./volumes/db/init/z0-extensions.sql:/docker-entrypoint-initdb.d/z0-extensions.sql:ro
+      - ./volumes/db/init/z1-bootstrap-after-migrations.sql:/docker-entrypoint-initdb.d/z1-bootstrap-after-migrations.sql:ro
+      - ./volumes/db/init/z2-set-role-passwords.sh:/docker-entrypoint-initdb.d/z2-set-role-passwords.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
       interval: 5s
@@ -181,6 +181,7 @@ services:
       - kong
       - meta
     environment:
+      HOSTNAME: 0.0.0.0
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DEFAULT_ORGANIZATION_NAME: Evigsense

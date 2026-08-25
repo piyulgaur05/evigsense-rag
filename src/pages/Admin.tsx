@@ -75,6 +75,7 @@ interface User {
 
 const Admin = () => {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<TagData[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -107,6 +108,7 @@ const Admin = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setCurrentUserId(user.id);
 
       const { data: roles } = await supabase
         // @ts-ignore - Supabase types not yet regenerated
@@ -277,6 +279,15 @@ const Admin = () => {
         // Remove the role
         const roleEntry = userRoles.find(ur => ur.user_id === userId && ur.role === role);
         if (!roleEntry) return;
+
+        if (role === "admin" && userId === currentUserId) {
+          toast.error("You can't remove your own admin role");
+          return;
+        }
+        if (role === "admin" && userRoles.filter(ur => ur.role === "admin").length <= 1) {
+          toast.error("Can't remove the last admin");
+          return;
+        }
 
         // @ts-ignore
         const { error } = await supabase.from("user_roles").delete().eq("id", roleEntry.id);

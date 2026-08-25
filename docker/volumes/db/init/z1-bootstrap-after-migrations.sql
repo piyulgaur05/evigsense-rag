@@ -1,7 +1,10 @@
 -- =========================================================================
--- Pre-migration bootstrap. Runs once on first volume creation
--- (Postgres /docker-entrypoint-initdb.d). Idempotent so it can also be
--- re-run manually via docker/scripts/fix-stack.ps1 / fix-stack.sh.
+-- Post-migration bootstrap. Runs once on first volume creation, after the
+-- base image's /docker-entrypoint-initdb.d/migrate.sh (which creates the
+-- `postgres` role and the `storage`/`auth` schemas) — filename must sort
+-- after "migrate.sh" for the Postgres entrypoint to run it in that order.
+-- Idempotent so it can also be re-run manually via
+-- docker/scripts/fix-stack.ps1 / fix-stack.sh.
 -- =========================================================================
 
 -- ---------- Storage --------------------------------------------------------
