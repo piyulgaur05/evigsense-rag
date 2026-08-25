@@ -17,7 +17,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
-import { Loader2, FileText, Languages, Download, Columns, ScanText, AlertCircle, X, Sparkles, Check, ChevronsUpDown } from "lucide-react";
+import { Loader2, FileText, Languages, Download, Columns, ScanText, AlertCircle, X, Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/translation-markdown/MarkdownViewer";
 import { SideBySideView } from "@/components/translation-markdown/SideBySideView";
@@ -47,8 +47,7 @@ export default function TranslationMarkdown() {
   const [docs, setDocs] = useState<DocOption[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>(initialDocId);
   const [docPickerOpen, setDocPickerOpen] = useState(false);
-  const targetLang = "English";
-  const setTargetLang = (_: string) => {};
+  const [targetLang, setTargetLang] = useState<string>("English");
   const [ocrMd, setOcrMd] = useState<string>("");
   const [translatedMd, setTranslatedMd] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string>("");
@@ -427,9 +426,16 @@ ${html}
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 Target language
               </label>
-              <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm">
-                English
-              </div>
+              <Select value={targetLang} onValueChange={setTargetLang}>
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="English">English</SelectItem>
+                  <SelectItem value="Russian">Russian</SelectItem>
+                  <SelectItem value="French">French</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -456,14 +462,6 @@ ${html}
             </Button>
             <Button onClick={handleSideBySide} variant="outline" disabled={!translatedMd}>
               <Columns /> View Side by Side
-            </Button>
-            <Button
-              onClick={() => handleIndexForChat()}
-              variant="outline"
-              disabled={!ocrMd || indexStatus === "running"}
-            >
-              {indexStatus === "running" ? <Loader2 className="animate-spin" /> : <Sparkles />}
-              {indexStatus === "running" ? "Indexing for chat…" : "Index for Chat (with images)"}
             </Button>
             <Button onClick={handleDownload} variant="outline" disabled={!translatedMd}>
               <Download /> Download Translated Markdown
