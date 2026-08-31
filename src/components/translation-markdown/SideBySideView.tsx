@@ -3,16 +3,19 @@ import { BlockRenderer } from "./MarkdownViewer";
 import { parseMarkdownBlocks, alignBlockPairs, MdBlock } from "@/lib/markdownBlocks";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowDown, ArrowUp, Check, Copy, Pencil, RotateCcw, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, RotateCcw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
+/**
+ * Read-only side-by-side comparison of source and translated Markdown.
+ * Editing lives in Collabora (see CollaboraEditor) — the .docx is the source
+ * of truth once a document has been opened there.
+ */
 interface SideBySideViewProps {
   leftMarkdown: string;
   rightMarkdown: string;
   leftLabel?: string;
   rightLabel?: string;
-  onRightChange?: (next: string) => void;
 }
 
 const TRANSLATED_OFFSET_KEY = "sbs-translated-offset";
@@ -32,7 +35,6 @@ export function SideBySideView({
   rightMarkdown,
   leftLabel,
   rightLabel,
-  onRightChange,
 }: SideBySideViewProps) {
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
@@ -42,8 +44,6 @@ export function SideBySideView({
   const syncTimer = useRef<number | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [editingText, setEditingText] = useState<string>("");
   const [translatedOffset, setTranslatedOffset] = useState<number>(() =>
     readStoredOffset(TRANSLATED_OFFSET_KEY, 0),
   );
@@ -190,7 +190,6 @@ export function SideBySideView({
     if (leftScrollRef.current) leftScrollRef.current.scrollTop = 0;
     if (rightScrollRef.current) rightScrollRef.current.scrollTop = 0;
     setSelectedIdx(null);
-    setEditingIdx(null);
   }, [leftMarkdown, rightMarkdown]);
 
   const handleSelect = useCallback((idx: number) => {
@@ -210,32 +209,6 @@ export function SideBySideView({
     },
     [rightBlocks],
   );
-
-  const handleEditStart = useCallback(
-    (idx: number) => {
-      const block = rightBlocks[idx];
-      setEditingIdx(idx);
-      setEditingText(block?.content ?? "");
-    },
-    [rightBlocks],
-  );
-
-  const handleEditCancel = useCallback(() => {
-    setEditingIdx(null);
-    setEditingText("");
-  }, []);
-
-  const handleEditSave = useCallback(() => {
-    if (editingIdx == null) return;
-    const next = rightBlocks
-      .map((b, j) => (j === editingIdx ? editingText : b.content))
-      .filter((c) => c != null)
-      .join("\n\n");
-    onRightChange?.(next);
-    setEditingIdx(null);
-    setEditingText("");
-    toast({ title: "Saved", description: "Translated block updated." });
-  }, [editingIdx, editingText, rightBlocks, onRightChange]);
 
   const adjustOffset = (delta: number) =>
     setTranslatedOffset((v) => Math.min(MAX_OFFSET, Math.max(MIN_OFFSET, v + delta)));
@@ -307,14 +280,7 @@ export function SideBySideView({
               hoveredIdx={hoveredIdx}
               onSelect={handleSelect}
               onHover={setHoveredIdx}
-              editingIdx={editingIdx}
-              editingText={editingText}
-              onEditTextChange={setEditingText}
-              onEditStart={handleEditStart}
-              onEditCancel={handleEditCancel}
-              onEditSave={handleEditSave}
               onCopy={handleCopyRight}
-              canEdit={!!onRightChange}
             />
           </div>
         </Pane>
@@ -360,14 +326,7 @@ function BlockGrid({
   hoveredIdx,
   onSelect,
   onHover,
-  editingIdx,
-  editingText,
-  onEditTextChange,
-  onEditStart,
-  onEditCancel,
-  onEditSave,
   onCopy,
-  canEdit,
 }: {
   pairs: ReturnType<typeof alignBlockPairs>;
   side: "left" | "right";
@@ -376,14 +335,7 @@ function BlockGrid({
   hoveredIdx: number | null;
   onSelect: (idx: number) => void;
   onHover: (idx: number | null) => void;
-  editingIdx?: number | null;
-  editingText?: string;
-  onEditTextChange?: (v: string) => void;
-  onEditStart?: (idx: number) => void;
-  onEditCancel?: () => void;
-  onEditSave?: () => void;
   onCopy?: (idx: number) => void;
-  canEdit?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -391,22 +343,17 @@ function BlockGrid({
         const block = side === "left" ? l : r;
         const isSelected = selectedIdx === i;
         const isHovered = hoveredIdx === i && !isSelected;
-        const isEditing = side === "right" && editingIdx === i;
-        const showActions = side === "right" && isSelected && !isEditing;
+        const showActions = side === "right" && isSelected;
         return (
           <div
             key={i}
             ref={setRowRef(i)}
             data-block-index={i}
-            onClick={() => {
-              if (isEditing) return;
-              onSelect(i);
-            }}
+            onClick={() => onSelect(i)}
             onMouseEnter={() => onHover(i)}
             onMouseLeave={() => onHover(null)}
             className={cn(
-              "scroll-mt-4 rounded-md border border-transparent px-3 py-2 transition-colors relative",
-              isEditing ? "cursor-default" : "cursor-pointer",
+              "scroll-mt-4 rounded-md border border-transparent px-3 py-2 transition-colors relative cursor-pointer",
               isSelected &&
                 "border-primary bg-primary/10 ring-1 ring-primary/40 shadow-sm",
               isHovered && "border-border bg-muted/40",
@@ -430,41 +377,9 @@ function BlockGrid({
                   <Copy className="h-3.5 w-3.5 mr-1" />
                   Copy
                 </Button>
-                {canEdit && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => onEditStart?.(i)}
-                    aria-label="Edit block"
-                  >
-                    <Pencil className="h-3.5 w-3.5 mr-1" />
-                    Edit
-                  </Button>
-                )}
               </div>
             )}
-            {isEditing ? (
-              <div onClick={(e) => e.stopPropagation()} className="space-y-2">
-                <Textarea
-                  value={editingText ?? ""}
-                  onChange={(e) => onEditTextChange?.(e.target.value)}
-                  rows={Math.max(4, (editingText ?? "").split("\n").length + 1)}
-                  className="font-mono text-xs"
-                  autoFocus
-                />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" className="h-7" onClick={onEditCancel}>
-                    <X className="h-3.5 w-3.5 mr-1" /> Cancel
-                  </Button>
-                  <Button size="sm" className="h-7" onClick={onEditSave}>
-                    <Check className="h-3.5 w-3.5 mr-1" /> Save
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <BlockRenderer block={block} />
-            )}
+            <BlockRenderer block={block} />
           </div>
         );
       })}

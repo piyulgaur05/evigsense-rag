@@ -371,6 +371,9 @@ export type Database = {
           created_at: string
           created_by: string
           document_id: string
+          docx_storage_path: string | null
+          docx_updated_at: string | null
+          docx_version: number
           id: string
           ocr_markdown: string | null
           ocr_model: string | null
@@ -378,11 +381,16 @@ export type Database = {
           translated_markdown: string | null
           translation_model: string | null
           updated_at: string
+          wopi_lock: string | null
+          wopi_lock_expires_at: string | null
         }
         Insert: {
           created_at?: string
           created_by: string
           document_id: string
+          docx_storage_path?: string | null
+          docx_updated_at?: string | null
+          docx_version?: number
           id?: string
           ocr_markdown?: string | null
           ocr_model?: string | null
@@ -390,6 +398,8 @@ export type Database = {
           translated_markdown?: string | null
           translation_model?: string | null
           updated_at?: string
+          wopi_lock?: string | null
+          wopi_lock_expires_at?: string | null
         }
         Update: {
           created_at?: string
