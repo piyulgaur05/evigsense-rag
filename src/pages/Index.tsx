@@ -1,85 +1,284 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  AudioLines,
+  FileSignature,
+  Languages,
+  MessagesSquare,
+  PanelsTopLeft,
+  Tags,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FileText, Search, MessageSquare, Shield, Sparkles } from "lucide-react";
+import { CitationTrace } from "@/components/landing/CitationTrace";
+import { LandingHeader } from "@/components/landing/LandingHeader";
+import { LandingFooter } from "@/components/landing/LandingFooter";
+
+const perimeter = [
+  { label: "model", value: "lm studio · localhost:1234" },
+  { label: "index", value: "postgres + pgvector · your machine" },
+  { label: "egress", value: "0 outbound requests" },
+];
+
+/** A real sequence, which is why these are numbered. */
+const pipeline = [
+  {
+    step: "01",
+    title: "Ingest",
+    body: "PDFs, Office files, images, audio and video go into a processing queue.",
+    produces: "document",
+  },
+  {
+    step: "02",
+    title: "Read",
+    body: "OCR turns scanned pages into Markdown, keeping tables and layout intact.",
+    produces: "markdown",
+  },
+  {
+    step: "03",
+    title: "Index",
+    body: "Text is split into chunks and embedded by the model running on your machine.",
+    produces: "vectors",
+  },
+  {
+    step: "04",
+    title: "Answer",
+    body: "Questions match against chunks. Every answer carries the page it came from.",
+    produces: "citation",
+  },
+];
+
+const capabilities = [
+  {
+    icon: MessagesSquare,
+    title: "Ask across everything",
+    body: "One question, answered from your whole library, with the source page and a relevance score attached to each claim.",
+  },
+  {
+    icon: PanelsTopLeft,
+    title: "Read alongside the answer",
+    body: "Open a single document and chat beside it. Click a citation and the viewer jumps to that page.",
+  },
+  {
+    icon: Languages,
+    title: "Translate a document",
+    body: "Turn a scan into Markdown, translate it to English, Russian or French, and compare the two side by side.",
+  },
+  {
+    icon: AudioLines,
+    title: "Transcribe recordings",
+    body: "Audio and video are transcribed on upload, then searched and cited like any other document.",
+  },
+  {
+    icon: FileSignature,
+    title: "Collect signatures",
+    body: "Send a signing request, capture a drawn or typed signature, and append a signature page to the PDF.",
+  },
+  {
+    icon: Tags,
+    title: "Keep it organised",
+    body: "Metadata fields, templates and taxonomies, plus rules that tag and file documents as they arrive.",
+  },
+];
+
+const governance = [
+  { term: "Roles", detail: "Admin, contributor and reader, enforced in the database." },
+  { term: "Sensitivity", detail: "Per-document levels that control who can open what." },
+  { term: "Folders", detail: "Access granted per folder, inherited by everything inside." },
+  { term: "Audit log", detail: "Every view, edit, download and signature, recorded." },
+];
 
 const Index = () => {
   const navigate = useNavigate();
+  // getSession() reads the cached session with no network round trip, so hold
+  // the first paint until it resolves. Rendering first made signed-in users
+  // watch the landing page flash before the redirect.
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    checkAuth();
-  }, []);
+    let active = true;
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        if (data.session) navigate("/dashboard", { replace: true });
+        else setChecking(false);
+      })
+      .catch(() => {
+        if (active) setChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
-  const checkAuth = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      navigate("/dashboard");
-    }
-  };
+  if (checking) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      <div className="container mx-auto px-4 py-16">
-        <div className="max-w-4xl mx-auto text-center space-y-8">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg">
-              <Sparkles className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              Jyoma AI
-            </h1>
-          </div>
+    <div className="min-h-screen bg-background">
+      <LandingHeader />
 
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Your intelligent file management system powered by AI. Store, search, and understand
-            your files with advanced RAG technology.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={() => navigate("/auth")} className="shadow-lg">
-              Get Started
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => navigate("/auth")}>
-              Sign In
-            </Button>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 mt-16">
-            <div className="p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <FileText className="h-10 w-10 text-primary mb-4 mx-auto" />
-              <h3 className="font-semibold mb-2">File Management</h3>
-              <p className="text-sm text-muted-foreground">
-                Upload, organize, and manage your files with version control and tagging
+      <main>
+        {/* Hero */}
+        <section className="mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8 sm:pb-24 sm:pt-16">
+          <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.08fr] lg:gap-14">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Offline document intelligence
               </p>
+
+              <h1 className="font-display mt-5 text-[clamp(2.35rem,4.6vw,3.5rem)] text-foreground">
+                Ask your archive.
+                <br />
+                Nothing leaves
+                <br />
+                the building.
+              </h1>
+
+              <p className="mt-6 max-w-md text-[15px] leading-relaxed text-muted-foreground">
+                Jyoma reads your documents, answers questions about them, and shows you the page
+                it read. The model runs on your hardware and the index sits in your own database.
+              </p>
+
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Button asChild size="lg">
+                  <Link to="/auth">
+                    Sign in
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild size="lg" variant="ghost">
+                  <a href="#pipeline">How it works</a>
+                </Button>
+              </div>
             </div>
 
-            <div className="p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <Search className="h-10 w-10 text-primary mb-4 mx-auto" />
-              <h3 className="font-semibold mb-2">Semantic Search</h3>
-              <p className="text-sm text-muted-foreground">
-                Find files instantly with hybrid keyword and vector-based search
-              </p>
-            </div>
+            <CitationTrace />
+          </div>
+        </section>
 
-            <div className="p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <MessageSquare className="h-10 w-10 text-primary mb-4 mx-auto" />
-              <h3 className="font-semibold mb-2">AI Assistant</h3>
-              <p className="text-sm text-muted-foreground">
-                Ask questions and get answers strictly from your indexed files
-              </p>
+        {/* Perimeter */}
+        <section className="border-y border-border bg-ink text-ink-foreground">
+          <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-16">
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,26rem)_1fr] lg:gap-16">
+              <div>
+                <h2 className="font-display text-[clamp(1.7rem,3.2vw,2.4rem)]">
+                  There is no cloud tier.
+                </h2>
+                <p className="mt-4 text-[15px] leading-relaxed text-ink-foreground/70">
+                  Every document, every embedding and every answer stays inside your network.
+                  Nothing is sent to an external model provider, because there is no external
+                  model provider to send it to.
+                </p>
+              </div>
+
+              <dl className="self-center divide-y divide-white/10 border-y border-white/10">
+                {perimeter.map((row) => (
+                  <div key={row.label} className="flex items-baseline gap-6 py-4">
+                    <dt className="w-20 shrink-0 font-mono text-[11px] uppercase tracking-[0.16em] text-signal">
+                      {row.label}
+                    </dt>
+                    <dd className="font-mono text-[13px] text-ink-foreground/90">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           </div>
+        </section>
 
-          <div className="mt-16 p-6 rounded-lg border bg-card/50">
-            <Shield className="h-10 w-10 text-primary mb-4 mx-auto" />
-            <h3 className="font-semibold mb-2">Enterprise-Grade Security</h3>
-            <p className="text-sm text-muted-foreground">
-              Role-based access control, file sensitivity levels, and comprehensive audit logging
+        {/* Pipeline */}
+        <section id="pipeline" className="scroll-mt-20">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+            <h2 className="font-display max-w-lg text-[clamp(1.8rem,3.6vw,2.6rem)] text-foreground">
+              What happens to a document
+            </h2>
+            <p className="mt-4 max-w-md text-[15px] text-muted-foreground">
+              Four steps, in order, each producing something the next one needs.
             </p>
+
+            <ol className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+              {pipeline.map((s) => (
+                <li key={s.step} className="flex flex-col bg-card p-6">
+                  <span className="font-mono text-[11px] tracking-[0.16em] text-signal">
+                    {s.step}
+                  </span>
+                  <h3 className="font-display mt-3 text-xl text-foreground">{s.title}</h3>
+                  <p className="mt-2.5 flex-1 text-[14px] leading-relaxed text-muted-foreground">
+                    {s.body}
+                  </p>
+                  <p className="mt-5 border-t border-border pt-3 font-mono text-[11px] text-muted-foreground">
+                    produces <span className="text-foreground">{s.produces}</span>
+                  </p>
+                </li>
+              ))}
+            </ol>
           </div>
-        </div>
-      </div>
+        </section>
+
+        {/* Capabilities */}
+        <section id="capabilities" className="scroll-mt-20 border-t border-border bg-muted/30">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+            <h2 className="font-display max-w-xl text-[clamp(1.8rem,3.6vw,2.6rem)] text-foreground">
+              What you can do with it
+            </h2>
+
+            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {capabilities.map((c) => (
+                <div
+                  key={c.title}
+                  className="rounded-lg border border-border bg-card p-6 shadow-paper transition-shadow duration-200 hover:shadow-lift"
+                >
+                  <c.icon className="h-5 w-5 text-primary" strokeWidth={1.75} />
+                  <h3 className="mt-4 text-[15px] font-semibold text-foreground">{c.title}</h3>
+                  <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">{c.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Governance */}
+        <section id="governance" className="scroll-mt-20 border-t border-border">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,24rem)_1fr] lg:gap-16">
+              <h2 className="font-display text-[clamp(1.8rem,3.6vw,2.6rem)] text-foreground">
+                Who saw what, and when
+              </h2>
+
+              <dl className="grid gap-x-10 gap-y-7 sm:grid-cols-2">
+                {governance.map((g) => (
+                  <div key={g.term}>
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-signal">
+                      {g.term}
+                    </dt>
+                    <dd className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
+                      {g.detail}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </section>
+
+        {/* Close */}
+        <section className="border-t border-border bg-muted/30">
+          <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:px-8">
+            <h2 className="font-display text-[clamp(1.5rem,3vw,2rem)] text-foreground">
+              Open your archive.
+            </h2>
+            <Button asChild size="lg" className="sm:ml-auto">
+              <Link to="/auth">
+                Sign in
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </section>
+      </main>
+
+      <LandingFooter />
     </div>
   );
 };

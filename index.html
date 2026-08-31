@@ -3,17 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jyoma AI - Document Management Platform</title>
-    <meta name="description" content="Jyoma AI - AI-Powered Document Management Platform for intelligent document processing, semantic search, and digital signatures">
+    <title>Jyoma AI — Offline document intelligence</title>
+    <meta
+      name="description"
+      content="Jyoma AI reads your documents, answers questions about them, and shows you the page it read. The model runs on your hardware and the index sits in your own database."
+    />
     <meta name="author" content="Jyoma AI" />
 
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="any" />
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)" />
+
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Jyoma AI - Document Management Platform">
-    <meta property="og:description" content="Jyoma AI - AI-Powered Document Management Platform for intelligent document processing, semantic search, and digital signatures">
+    <meta property="og:title" content="Jyoma AI — Offline document intelligence" />
+    <meta
+      property="og:description"
+      content="Ask your archive. Nothing leaves the building. Documents, embeddings and answers all stay inside your network."
+    />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Jyoma AI - Document Management Platform">
-    <meta name="twitter:description" content="Jyoma AI - AI-Powered Document Management Platform for intelligent document processing, semantic search, and digital signatures">
+    <meta name="twitter:title" content="Jyoma AI — Offline document intelligence" />
+    <meta
+      name="twitter:description"
+      content="Ask your archive. Nothing leaves the building. Documents, embeddings and answers all stay inside your network."
+    />
+
+    <script>
+      // Apply the stored theme before first paint so a dark-mode user never
+      // sees a white flash. Mirrors next-themes' localStorage key and class.
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var dark =
+            stored === "dark" ||
+            ((!stored || stored === "system") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* private mode or blocked storage — fall through to light */
+        }
+      })();
+    </script>
   </head>
 
   <body>

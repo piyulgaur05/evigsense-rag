@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Sparkles,
   Menu,
   LogOut,
   User,
@@ -14,6 +13,8 @@ import {
   Settings,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { Logo } from "@/components/brand/Logo";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -80,7 +81,7 @@ export function AppHeader() {
       <div className="flex h-full items-center gap-2 px-4 lg:px-6">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation">
+            <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
@@ -102,14 +103,14 @@ export function AppHeader() {
           </SheetContent>
         </Sheet>
 
-        <NavLink to="/dashboard" className="mr-4 flex shrink-0 items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-sidebar-primary to-secondary">
-            <Sparkles className="h-5 w-5 text-sidebar-primary-foreground" />
-          </div>
-          <span className="text-base font-bold tracking-tight text-foreground">Jyoma AI</span>
+        <NavLink
+          to="/dashboard"
+          className="mr-4 flex shrink-0 items-center rounded-sm text-foreground"
+        >
+          <Logo className="text-[16px]" />
         </NavLink>
 
-        <nav className="hidden flex-1 items-center gap-1 md:flex">
+        <nav className="hidden flex-1 items-center gap-1 lg:flex">
           {items.map((item) => (
             <NavLink key={item.url} to={item.url} className={linkBase} activeClassName={linkActive}>
               {item.title}
@@ -117,7 +118,8 @@ export function AppHeader() {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
+          <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full" aria-label="Account">

@@ -111,7 +111,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 → sign in with your local admin user.
+Open http://localhost:8080 → sign in with your local admin user.
 
 ## Environment variables
 
