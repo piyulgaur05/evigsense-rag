@@ -6,8 +6,14 @@
 // https://github.com/supabase/supabase/blob/master/docker/volumes/functions/main/index.ts
 import { STATUS_CODE } from 'jsr:@std/http/status';
 import * as jose from 'https://deno.land/x/jose@v5.9.6/index.ts';
+import { logAiConfig } from '../_shared/ai.ts';
 
 console.log('main edge-runtime dispatcher started');
+
+// Print the resolved inference backend per role (chat -> remote vLLM,
+// embed/ocr/translate -> LM Studio). If env forwarding below ever breaks, this
+// is the only place the silent fallback to LM Studio defaults is visible.
+logAiConfig();
 
 const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? '';
 const VERIFY_JWT = (Deno.env.get('VERIFY_JWT') ?? 'false').toLowerCase() === 'true';
@@ -65,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
   const servicePath = `/home/deno/functions/${serviceName}`;
 
-  // Forward host env vars (SUPABASE_*, LMSTUDIO_*, OCR_*, etc.) into the worker
+  // Forward host env vars (SUPABASE_*, CHAT_*, LMSTUDIO_*, OCR_*, etc.) into the worker
   // isolate so user functions can read them via Deno.env.get. The runtime does
   // not inherit them automatically — we must pass an explicit [key, value] list.
   const envVars: Array<[string, string]> = Object.entries(Deno.env.toObject());

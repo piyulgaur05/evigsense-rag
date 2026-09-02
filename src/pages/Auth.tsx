@@ -49,9 +49,9 @@ function readableAuthError(message: string) {
 }
 
 const ledger = [
-  ["model", "lm studio:1234"],
+  ["model", "qwen3.5-35b + lm studio"],
   ["index", "postgres + pgvector"],
-  ["egress", "0 requests"],
+  ["egress", "self-hosted only"],
 ];
 
 /** A ruled field on a printed form: label in the margin, rule under the value. */

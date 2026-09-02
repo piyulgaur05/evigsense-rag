@@ -3,7 +3,7 @@
  * Replaces Paddle OCR and OCR.space.
  */
 
-import { chatCompletionText, getChatModel } from "./ai.ts";
+import { chatCompletionText, getEndpoint } from "./ai.ts";
 
 export interface OcrResult {
   markdown: string;
@@ -23,7 +23,9 @@ function getOcrBackend(): string {
 }
 
 function getOcrModel(): string {
-  return Deno.env.get("OCR_MODEL") ?? getChatModel();
+  // Resolved against the "ocr" role, so an unset OCR_MODEL falls back to the
+  // LM Studio chat model rather than the remote (text-only) chat LLM.
+  return getEndpoint("ocr").model;
 }
 
 function getOcrMaxTokens(): number {
@@ -75,6 +77,7 @@ async function ocrViaLmStudio(bytes: Uint8Array, mimeType: string): Promise<OcrR
       },
     ],
     {
+      role: "ocr",
       model: getOcrModel(),
       temperature: 0,
       max_tokens: getOcrMaxTokens(),

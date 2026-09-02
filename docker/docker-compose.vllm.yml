@@ -1,0 +1,133 @@
+# vLLM servers for the two roles LM Studio cannot serve, on a standard
+# x86_64 + CUDA host (this repo's dev machine, or any normal NVIDIA server).
+#
+#   8103  embed   Qwen/Qwen3-VL-Embedding-2B   -> EMBED_BASE_URL
+#   8104  rerank  Qwen/Qwen3-VL-Reranker-2B    -> RERANK_BASE_URL
+#
+# Chat, translation and OCR stay on LM Studio, which handles those fine. These
+# two do not work there at all: LM Studio types the embedding GGUF as `vlm` and
+# its /v1/embeddings ignores the `model` field entirely (a bogus name returns
+# whatever embedder is loaded), and it has no /v1/rerank route.
+#
+# For the DGX Spark (arm64 / GB10), use docker-compose.models.yml instead --
+# it serves all four roles and needs an sm_121a image.
+#
+# Start (joins the app's compose project, so edge functions can reach these as
+# http://vllm-embed:8000/v1 without going out through a host port):
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.vllm.yml up -d
+#
+# Just the embedder (enough to unblock document chat):
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.vllm.yml up -d vllm-embed
+#
+# Memory vars are deliberately NOT shared with docker-compose.models.yml: the
+# Spark's fractions are of a 119 GB unified pool, so reusing e.g. 0.08 here
+# would ask for 0.6 GB on an 8 GB card and vLLM would refuse to start.
+# ---------------------------------------------------------------------------
+# VRAM. Unlike the Spark's unified pool, --gpu-memory-utilization here is a
+# fraction of *dedicated* VRAM, and the two services still add up.
+#
+# MEASURED on an 8 GB RTX 4070 Laptop: even at fp8, embed alone needs fraction
+# ~0.70 (~5.2 GB: weights + CUDA graph capture + KV cache) to start reliably.
+# A same-size rerank model needs a similar budget, so the two CANNOT be
+# resident together on an 8 GB card -- confirmed by testing, not estimated.
+# vllm-rerank will exit with "No available memory for the cache blocks" if
+# started while vllm-embed already holds its ~5 GB. Either:
+#   - run only vllm-embed (leave RERANK_MODEL empty in the app's .env), or
+#   - stop vllm-embed before starting vllm-rerank (mutually exclusive on 8 GB), or
+#   - use a 16 GB+ card, where both fit at fp8 with room to spare.
+# On a 24 GB+ card, bf16 (VLLM_QUANTIZATION=) works for both simultaneously.
+# ---------------------------------------------------------------------------
+
+# Must match `name:` in docker-compose.yml so both files land in one project.
+name: jyoma-ai-offline
+
+x-vllm-common: &vllm-common
+  image: ${VLLM_IMAGE_CUDA:-vllm/vllm-openai:latest}
+  restart: unless-stopped
+  # vLLM's workers need far more than the 64MB default shared memory.
+  ipc: host
+  # Overrides the image's baked-in ENTRYPOINT ["vllm","serve"] (confirmed via
+  # `docker inspect vllm/vllm-openai:latest`). Without this, Docker runs
+  # ENTRYPOINT + command back to back -- "vllm serve" followed by our own
+  # "sh -lc ..." as extra arguments -- and vllm parses "sh" as the model name.
+  entrypoint: []
+  volumes:
+    - hf-cache:/root/.cache/huggingface
+    - ./volumes/vllm:/config:ro
+  environment:
+    HF_TOKEN: ${HF_TOKEN:-}
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  healthcheck:
+    # python, not curl: python is guaranteed present in a vLLM image.
+    test:
+      - CMD-SHELL
+      - python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=5).status==200 else 1)"
+    interval: 15s
+    timeout: 5s
+    # First boot downloads ~5GB of weights before the port opens.
+    retries: 80
+    start_period: 180s
+
+services:
+  # --- Embeddings -----------------------------------------------------------
+  # Multimodal, single dense vector, natively 2048-dim. The app asks for 1024
+  # per request via the OpenAI `dimensions` parameter (EMBED_DIMENSIONS), which
+  # is Matryoshka truncation the model was trained for.
+  vllm-embed:
+    <<: *vllm-common
+    container_name: vllm-embed
+    ports:
+      - "${VLLM_EMBED_PORT:-8103}:8000"
+    # Shell form so an unset VLLM_QUANTIZATION collapses away instead of being
+    # passed as an empty argument, which vLLM rejects.
+    command:
+      - sh
+      - -lc
+      - >
+        exec vllm serve "${EMBED_MODEL_ID:-Qwen/Qwen3-VL-Embedding-2B}"
+        --served-model-name "${EMBED_MODEL:-Qwen/Qwen3-VL-Embedding-2B}"
+        --runner pooling
+        --host 0.0.0.0 --port 8000
+        --gpu-memory-utilization ${VLLM_CUDA_EMBED_MEM:-0.45}
+        --max-model-len ${VLLM_CUDA_EMBED_CTX:-8192}
+        ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+
+  # --- Reranking ------------------------------------------------------------
+  # Serves the Jina/Cohere-style POST /v1/rerank route that _shared/ai.ts calls.
+  # hf_overrides swaps the causal LM head for the yes/no scoring head, and the
+  # chat template is required -- it ships in the Qwen3-VL-Embedding repo, not
+  # with the weights. Fetch it first or this container exits at startup:
+  #   curl -fsSL -o docker/volumes/vllm/reranker_template.jinja \
+  #     https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
+  vllm-rerank:
+    <<: *vllm-common
+    container_name: vllm-rerank
+    # Serialised behind the embedder: two models warming up together spikes
+    # allocation well above steady state and OOMs a small card.
+    depends_on:
+      vllm-embed:
+        condition: service_healthy
+    ports:
+      - "${VLLM_RERANK_PORT:-8104}:8000"
+    command:
+      - sh
+      - -lc
+      - >
+        exec vllm serve "${RERANK_MODEL_ID:-Qwen/Qwen3-VL-Reranker-2B}"
+        --served-model-name "${RERANK_MODEL:-Qwen/Qwen3-VL-Reranker-2B}"
+        --runner pooling
+        --hf_overrides '{"architectures":["Qwen3VLForSequenceClassification"],"classifier_from_token":["no","yes"],"is_original_qwen3_reranker":true}'
+        --chat-template /config/reranker_template.jinja
+        --host 0.0.0.0 --port 8000
+        --gpu-memory-utilization ${VLLM_CUDA_RERANK_MEM:-0.35}
+        --max-model-len ${VLLM_CUDA_RERANK_CTX:-4096}
+        ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+
+volumes:
+  hf-cache:

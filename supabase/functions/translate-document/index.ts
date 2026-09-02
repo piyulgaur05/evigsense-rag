@@ -115,6 +115,7 @@ ${numberedTexts}`;
       { role: 'user', content: userPrompt },
     ],
     {
+      role: 'translate',
       temperature: 0.1,
       max_tokens: 8000,
       extra: { chat_template_kwargs: { enable_thinking: false } },

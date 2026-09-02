@@ -66,6 +66,7 @@ async function translateChunk({
         },
       ],
       {
+        role: "translate",
         model: getTranslateModel(),
         temperature: 0.2,
         max_tokens: 4096,

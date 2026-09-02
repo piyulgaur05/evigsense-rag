@@ -1,0 +1,177 @@
+# vLLM model servers for NVIDIA DGX Spark (GB10 / Grace Blackwell, sm_121a, arm64).
+#
+# Serves all four roles the app needs, each on its own OpenAI-compatible port:
+#   8101  chat     Qwen/Qwen3.5-35B-A3B          -> CHAT_BASE_URL
+#   8102  ocr      datalab-to/chandra-ocr-2      -> OCR_BASE_URL
+#   8103  embed    Qwen/Qwen3-VL-Embedding-2B    -> EMBED_BASE_URL
+#   8104  rerank   Qwen/Qwen3-VL-Reranker-2B     -> RERANK_BASE_URL
+#
+# Run standalone on the Spark:
+#   docker compose --env-file .env -f docker-compose.models.yml up -d
+#
+# Or alongside the Supabase stack on the same box (shares the project network, so
+# edge functions can reach the servers as http://vllm-chat:8000/v1 etc.):
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.models.yml up -d
+#
+# ---------------------------------------------------------------------------
+# MEMORY IS THE BINDING CONSTRAINT. Spark has ONE ~119.7 GiB unified pool shared
+# by the OS, container runtime, page cache, model weights and KV cache -- there
+# is no separate VRAM. Each --gpu-memory-utilization below is a fraction of that
+# whole pool, and the four services ADD UP. The defaults total 0.76, leaving
+# ~28 GiB of headroom. Raise one and you must lower another.
+#
+# Services are chained with depends_on/service_healthy on purpose: four models
+# warming up simultaneously spikes allocation far above their steady state and
+# OOMs the box. Sequential startup is slower but survivable.
+# ---------------------------------------------------------------------------
+
+# Must match `name:` in docker-compose.yml, or the combined run splits into two
+# projects and the edge functions cannot resolve vllm-* by service name.
+name: jyoma-ai-offline
+
+x-vllm-common: &vllm-common
+  image: ${VLLM_IMAGE:-nvcr.io/nvidia/vllm:26.05-py3}
+  restart: unless-stopped
+  # Shared-memory default (64MB) is far too small for vLLM's workers.
+  ipc: host
+  # Overrides the image's baked-in ENTRYPOINT (vllm/vllm-openai ships
+  # ["vllm","serve"]; NGC's image is unverified here but command below also
+  # starts with vllm/serve, so the same double-up would occur if it matches).
+  # Without this, ENTRYPOINT + command run back to back and vllm parses the
+  # first word of command as the model name instead of a real argument.
+  entrypoint: []
+  volumes:
+    # One HF cache for every service so a model is downloaded exactly once.
+    - hf-cache:/root/.cache/huggingface
+    - ./volumes/vllm:/config:ro
+  environment:
+    # Needed only for gated repos; harmless when empty.
+    HF_TOKEN: ${HF_TOKEN:-}
+    # Off by default: huggingface_hub hard-errors when this is 1 but the
+    # hf_transfer package is absent from the image. Turn on only if it is there.
+    HF_HUB_ENABLE_HF_TRANSFER: ${HF_HUB_ENABLE_HF_TRANSFER:-0}
+    # Spark is a single GB10; be explicit rather than inheriting the host's view.
+    CUDA_VISIBLE_DEVICES: "0"
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  # If your Docker predates the deploy.devices syntax, delete the deploy block
+  # above and add:  runtime: nvidia
+  healthcheck:
+    # Uses python rather than curl: python is guaranteed present in a vLLM
+    # image, curl is not, and a missing binary would stall the depends_on chain.
+    test:
+      - CMD-SHELL
+      - python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=5).status==200 else 1)"
+    interval: 15s
+    timeout: 5s
+    # Weights load from cold cache on first boot; give it room before failing.
+    retries: 80
+    start_period: 120s
+
+services:
+  # --- Chat: assistant, summaries, metadata extraction, auto-tagging ---------
+  # Largest resident model, so it loads first and takes the biggest slice.
+  # NVFP4 is the right quantization on Blackwell -- it cuts memory pressure more
+  # than anything else you can change here.
+  vllm-chat:
+    <<: *vllm-common
+    container_name: vllm-chat
+    ports:
+      - "${VLLM_CHAT_PORT:-8101}:8000"
+    command:
+      - vllm
+      - serve
+      - ${CHAT_MODEL_ID:-Qwen/Qwen3.5-35B-A3B}
+      - --served-model-name=${CHAT_MODEL_ID:-Qwen/Qwen3.5-35B-A3B}
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=${VLLM_CHAT_MEM:-0.45}
+      - --max-model-len=${VLLM_CHAT_CTX:-32768}
+      # Spark trades bandwidth for capacity: past a handful of concurrent
+      # sequences the per-token bandwidth cost outweighs batching gains.
+      - --max-num-seqs=${VLLM_CHAT_SEQS:-4}
+
+  # --- OCR: Chandra 2 VLM, driven through /v1/chat/completions --------------
+  # _shared/ocr.ts posts pages as image_url data URIs, which is exactly the
+  # interface Chandra's vLLM deployment exposes.
+  vllm-ocr:
+    <<: *vllm-common
+    container_name: vllm-ocr
+    depends_on:
+      vllm-chat:
+        condition: service_healthy
+    ports:
+      - "${VLLM_OCR_PORT:-8102}:8000"
+    command:
+      - vllm
+      - serve
+      - ${OCR_MODEL_ID:-datalab-to/chandra-ocr-2}
+      # Served under the short id the app already sends as OCR_MODEL.
+      - --served-model-name=${OCR_MODEL:-chandra-ocr-2}
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=${VLLM_OCR_MEM:-0.15}
+      # Must exceed OCR_MAX_TOKENS (16384) plus the encoded page image.
+      - --max-model-len=${VLLM_OCR_CTX:-24576}
+      - --max-num-seqs=${VLLM_OCR_SEQS:-2}
+
+  # --- Embeddings: Qwen3-VL-Embedding-2B, pooling runner --------------------
+  # Multimodal and single-dense-vector, so pgvector cosine works unchanged.
+  # MRL truncation to 1024 is requested per-call via the `dimensions` parameter
+  # (EMBED_DIMENSIONS), not here.
+  vllm-embed:
+    <<: *vllm-common
+    container_name: vllm-embed
+    depends_on:
+      vllm-ocr:
+        condition: service_healthy
+    ports:
+      - "${VLLM_EMBED_PORT:-8103}:8000"
+    command:
+      - vllm
+      - serve
+      - ${EMBED_MODEL_ID:-Qwen/Qwen3-VL-Embedding-2B}
+      - --served-model-name=${EMBED_MODEL:-Qwen/Qwen3-VL-Embedding-2B}
+      - --runner=pooling
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=${VLLM_EMBED_MEM:-0.08}
+      # Chunks run ~1500 chars, but page images cost far more tokens than text.
+      - --max-model-len=${VLLM_EMBED_CTX:-8192}
+
+  # --- Reranking: Qwen3-VL-Reranker-2B, sequence-classification head --------
+  # NOTE: this one needs a chat template that ships with the Qwen3-VL-Embedding
+  # repo, not with the model weights. Fetch it before first start:
+  #   mkdir -p docker/volumes/vllm && curl -fsSL -o docker/volumes/vllm/reranker_template.jinja \
+  #     https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
+  # Without it the container exits at startup.
+  vllm-rerank:
+    <<: *vllm-common
+    container_name: vllm-rerank
+    depends_on:
+      vllm-embed:
+        condition: service_healthy
+    ports:
+      - "${VLLM_RERANK_PORT:-8104}:8000"
+    command:
+      - vllm
+      - serve
+      - ${RERANK_MODEL_ID:-Qwen/Qwen3-VL-Reranker-2B}
+      - --served-model-name=${RERANK_MODEL:-Qwen/Qwen3-VL-Reranker-2B}
+      - --runner=pooling
+      # Converts the causal LM into the yes/no scoring head the /rerank route needs.
+      - --hf_overrides={"architectures":["Qwen3VLForSequenceClassification"],"classifier_from_token":["no","yes"],"is_original_qwen3_reranker":true}
+      - --chat-template=/config/reranker_template.jinja
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=${VLLM_RERANK_MEM:-0.08}
+      # Must fit query + the longest candidate chunk in one scoring pass.
+      - --max-model-len=${VLLM_RERANK_CTX:-4096}
+
+volumes:
+  hf-cache:

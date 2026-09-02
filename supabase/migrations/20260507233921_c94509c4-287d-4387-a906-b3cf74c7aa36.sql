@@ -29,9 +29,13 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS
   SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role)
 $$;
 
+DROP POLICY IF EXISTS "Users can view their own roles" ON public.user_roles;
 CREATE POLICY "Users can view their own roles" ON public.user_roles FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Admins can insert roles" ON public.user_roles;
 CREATE POLICY "Admins can insert roles" ON public.user_roles FOR INSERT WITH CHECK (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Admins can delete roles" ON public.user_roles;
 CREATE POLICY "Admins can delete roles" ON public.user_roles FOR DELETE TO authenticated USING (public.has_role(auth.uid(),'admin'));
 
 -- ===== tags =====
@@ -42,10 +46,15 @@ CREATE TABLE IF NOT EXISTS public.tags (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone can view tags" ON public.tags;
 CREATE POLICY "Anyone can view tags" ON public.tags FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admins can manage tags" ON public.tags;
 CREATE POLICY "Admins can manage tags" ON public.tags FOR ALL TO authenticated USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can create tags" ON public.tags;
 CREATE POLICY "Users can create tags" ON public.tags FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can update tags" ON public.tags;
 CREATE POLICY "Users can update tags" ON public.tags FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Users can delete tags" ON public.tags;
 CREATE POLICY "Users can delete tags" ON public.tags FOR DELETE TO authenticated USING (true);
 
 -- ===== folders (created early so documents.folder_id can reference) =====
@@ -82,8 +91,10 @@ BEGIN
   RETURN NEW;
 END; $$;
 
+DROP TRIGGER IF EXISTS trigger_update_folder_path ON public.folders;
 CREATE TRIGGER trigger_update_folder_path BEFORE INSERT OR UPDATE OF parent_id ON public.folders
 FOR EACH ROW EXECUTE FUNCTION public.update_folder_path();
+DROP TRIGGER IF EXISTS trigger_folders_updated_at ON public.folders;
 CREATE TRIGGER trigger_folders_updated_at BEFORE UPDATE ON public.folders
 FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -109,6 +120,7 @@ CREATE INDEX IF NOT EXISTS documents_summary_idx ON public.documents(id) WHERE s
 CREATE INDEX IF NOT EXISTS idx_documents_is_editable ON public.documents(is_editable);
 CREATE INDEX IF NOT EXISTS idx_documents_folder_id ON public.documents(folder_id);
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_documents_updated_at ON public.documents;
 CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON public.documents
 FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -124,6 +136,7 @@ CREATE TABLE IF NOT EXISTS public.folder_access (
   UNIQUE(folder_id, user_id)
 );
 ALTER TABLE public.folder_access ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_folder_access_updated_at ON public.folder_access;
 CREATE TRIGGER update_folder_access_updated_at BEFORE UPDATE ON public.folder_access
 FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -146,28 +159,43 @@ BEGIN
 END; $$;
 
 -- folders RLS (final version)
+DROP POLICY IF EXISTS "Admins can view all folders" ON public.folders;
 CREATE POLICY "Admins can view all folders" ON public.folders FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can view folders they have access to" ON public.folders;
 CREATE POLICY "Users can view folders they have access to" ON public.folders FOR SELECT USING (public.has_folder_access(auth.uid(), id, 'view'));
+DROP POLICY IF EXISTS "Users can create their own folders" ON public.folders;
 CREATE POLICY "Users can create their own folders" ON public.folders FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update folders they can manage" ON public.folders;
 CREATE POLICY "Users can update folders they can manage" ON public.folders FOR UPDATE USING (public.has_folder_access(auth.uid(), id, 'manage'));
+DROP POLICY IF EXISTS "Users can delete folders they can manage" ON public.folders;
 CREATE POLICY "Users can delete folders they can manage" ON public.folders FOR DELETE USING (public.has_folder_access(auth.uid(), id, 'manage'));
 
 -- folder_access RLS
+DROP POLICY IF EXISTS "Users with manage access can view folder permissions" ON public.folder_access;
 CREATE POLICY "Users with manage access can view folder permissions" ON public.folder_access FOR SELECT USING (public.has_folder_access(auth.uid(), folder_id, 'manage') OR user_id = auth.uid());
+DROP POLICY IF EXISTS "Users with manage access can grant permissions" ON public.folder_access;
 CREATE POLICY "Users with manage access can grant permissions" ON public.folder_access FOR INSERT WITH CHECK (public.has_folder_access(auth.uid(), folder_id, 'manage'));
+DROP POLICY IF EXISTS "Users with manage access can update permissions" ON public.folder_access;
 CREATE POLICY "Users with manage access can update permissions" ON public.folder_access FOR UPDATE USING (public.has_folder_access(auth.uid(), folder_id, 'manage'));
+DROP POLICY IF EXISTS "Users with manage access can revoke permissions" ON public.folder_access;
 CREATE POLICY "Users with manage access can revoke permissions" ON public.folder_access FOR DELETE USING (public.has_folder_access(auth.uid(), folder_id, 'manage'));
+DROP POLICY IF EXISTS "Admins can manage all folder access" ON public.folder_access;
 CREATE POLICY "Admins can manage all folder access" ON public.folder_access FOR ALL USING (public.has_role(auth.uid(),'admin'));
 
 -- documents RLS (final version with folder access)
+DROP POLICY IF EXISTS "Users can view documents they own or have folder access" ON public.documents;
 CREATE POLICY "Users can view documents they own or have folder access" ON public.documents FOR SELECT
 USING (created_by = auth.uid() OR (folder_id IS NOT NULL AND public.has_folder_access(auth.uid(), folder_id, 'view')));
+DROP POLICY IF EXISTS "Users can insert documents in accessible folders" ON public.documents;
 CREATE POLICY "Users can insert documents in accessible folders" ON public.documents FOR INSERT
 WITH CHECK (created_by = auth.uid() AND (folder_id IS NULL OR public.has_folder_access(auth.uid(), folder_id, 'edit')));
+DROP POLICY IF EXISTS "Users can update documents they own or have folder edit access" ON public.documents;
 CREATE POLICY "Users can update documents they own or have folder edit access" ON public.documents FOR UPDATE
 USING (created_by = auth.uid() OR (folder_id IS NOT NULL AND public.has_folder_access(auth.uid(), folder_id, 'edit')));
+DROP POLICY IF EXISTS "Users can delete documents they own or have folder manage access" ON public.documents;
 CREATE POLICY "Users can delete documents they own or have folder manage access" ON public.documents FOR DELETE
 USING (created_by = auth.uid() OR (folder_id IS NOT NULL AND public.has_folder_access(auth.uid(), folder_id, 'manage')));
+DROP POLICY IF EXISTS "Admins can view all documents" ON public.documents;
 CREATE POLICY "Admins can view all documents" ON public.documents FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
 -- folder creator gets manage access via trigger
@@ -178,6 +206,7 @@ BEGIN
   VALUES (NEW.id, NEW.created_by, 'manage', NEW.created_by);
   RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS on_folder_created ON public.folders;
 CREATE TRIGGER on_folder_created AFTER INSERT ON public.folders FOR EACH ROW EXECUTE FUNCTION public.grant_folder_creator_access();
 
 -- folder helpers
@@ -219,12 +248,16 @@ CREATE TABLE IF NOT EXISTS public.document_tags (
   UNIQUE(document_id, tag_id)
 );
 ALTER TABLE public.document_tags ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view tags on their own documents" ON public.document_tags;
 CREATE POLICY "Users can view tags on their own documents" ON public.document_tags FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_tags.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can add tags to their own documents" ON public.document_tags;
 CREATE POLICY "Users can add tags to their own documents" ON public.document_tags FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_tags.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can remove tags from their own documents" ON public.document_tags;
 CREATE POLICY "Users can remove tags from their own documents" ON public.document_tags FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_tags.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all document tags" ON public.document_tags;
 CREATE POLICY "Admins can view all document tags" ON public.document_tags FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
 -- ===== document_embeddings =====
@@ -243,13 +276,18 @@ CREATE INDEX IF NOT EXISTS idx_document_embeddings_page_number ON public.documen
 CREATE INDEX IF NOT EXISTS idx_document_embeddings_hnsw ON public.document_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64);
 CREATE INDEX IF NOT EXISTS idx_document_embeddings_chunk ON public.document_embeddings(document_id, chunk_index);
 ALTER TABLE public.document_embeddings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view embeddings for their own documents" ON public.document_embeddings;
 CREATE POLICY "Users can view embeddings for their own documents" ON public.document_embeddings FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_embeddings.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can insert embeddings for their own documents" ON public.document_embeddings;
 CREATE POLICY "Users can insert embeddings for their own documents" ON public.document_embeddings FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_embeddings.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can delete embeddings for their own documents" ON public.document_embeddings;
 CREATE POLICY "Users can delete embeddings for their own documents" ON public.document_embeddings FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_embeddings.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all embeddings" ON public.document_embeddings;
 CREATE POLICY "Admins can view all embeddings" ON public.document_embeddings FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP TRIGGER IF EXISTS update_document_embeddings_updated_at ON public.document_embeddings;
 CREATE TRIGGER update_document_embeddings_updated_at BEFORE UPDATE ON public.document_embeddings
 FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -288,18 +326,28 @@ CREATE INDEX IF NOT EXISTS conversations_updated_at_idx ON public.conversations(
 CREATE INDEX IF NOT EXISTS conversation_messages_conversation_id_idx ON public.conversation_messages(conversation_id);
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversation_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own conversations" ON public.conversations;
 CREATE POLICY "Users can view their own conversations" ON public.conversations FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can create their own conversations" ON public.conversations;
 CREATE POLICY "Users can create their own conversations" ON public.conversations FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update their own conversations" ON public.conversations;
 CREATE POLICY "Users can update their own conversations" ON public.conversations FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete their own conversations" ON public.conversations;
 CREATE POLICY "Users can delete their own conversations" ON public.conversations FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all conversations" ON public.conversations;
 CREATE POLICY "Admins can view all conversations" ON public.conversations FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can view messages in their conversations" ON public.conversation_messages;
 CREATE POLICY "Users can view messages in their conversations" ON public.conversation_messages FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.conversations WHERE id = conversation_messages.conversation_id AND user_id = auth.uid()));
+DROP POLICY IF EXISTS "Users can insert messages in their conversations" ON public.conversation_messages;
 CREATE POLICY "Users can insert messages in their conversations" ON public.conversation_messages FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.conversations WHERE id = conversation_messages.conversation_id AND user_id = auth.uid()));
+DROP POLICY IF EXISTS "Users can delete messages in their conversations" ON public.conversation_messages;
 CREATE POLICY "Users can delete messages in their conversations" ON public.conversation_messages FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.conversations WHERE id = conversation_messages.conversation_id AND user_id = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all conversation messages" ON public.conversation_messages;
 CREATE POLICY "Admins can view all conversation messages" ON public.conversation_messages FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP TRIGGER IF EXISTS update_conversations_updated_at ON public.conversations;
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== analytics =====
@@ -327,11 +375,17 @@ CREATE INDEX IF NOT EXISTS analytics_document_access_user_id_idx ON public.analy
 CREATE INDEX IF NOT EXISTS analytics_document_access_document_id_idx ON public.analytics_document_access(document_id);
 ALTER TABLE public.analytics_queries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analytics_document_access ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own analytics queries" ON public.analytics_queries;
 CREATE POLICY "Users can view their own analytics queries" ON public.analytics_queries FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert their own analytics queries" ON public.analytics_queries;
 CREATE POLICY "Users can insert their own analytics queries" ON public.analytics_queries FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all analytics queries" ON public.analytics_queries;
 CREATE POLICY "Admins can view all analytics queries" ON public.analytics_queries FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can view their own document access analytics" ON public.analytics_document_access;
 CREATE POLICY "Users can view their own document access analytics" ON public.analytics_document_access FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert their own document access analytics" ON public.analytics_document_access;
 CREATE POLICY "Users can insert their own document access analytics" ON public.analytics_document_access FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all document access analytics" ON public.analytics_document_access;
 CREATE POLICY "Admins can view all document access analytics" ON public.analytics_document_access FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
 CREATE OR REPLACE FUNCTION public.get_popular_queries(filter_user_id UUID DEFAULT NULL, limit_count INTEGER DEFAULT 10)
@@ -376,10 +430,13 @@ CREATE TABLE IF NOT EXISTS public.document_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON public.document_versions(document_id, version_number DESC);
 ALTER TABLE public.document_versions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view versions of their own documents" ON public.document_versions;
 CREATE POLICY "Users can view versions of their own documents" ON public.document_versions FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_versions.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can insert versions for their own documents" ON public.document_versions;
 CREATE POLICY "Users can insert versions for their own documents" ON public.document_versions FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_versions.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all document versions" ON public.document_versions;
 CREATE POLICY "Admins can view all document versions" ON public.document_versions FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
 CREATE OR REPLACE FUNCTION public.create_document_version()
@@ -391,6 +448,7 @@ BEGIN
   VALUES (OLD.id,next_version,OLD.title,OLD.content_text,OLD.summary,OLD.storage_path,OLD.original_filename,OLD.mime_type,OLD.status,OLD.sensitivity,OLD.created_by,OLD.updated_at);
   RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS create_document_version_trigger ON public.documents;
 CREATE TRIGGER create_document_version_trigger BEFORE UPDATE ON public.documents FOR EACH ROW
 WHEN (OLD.title IS DISTINCT FROM NEW.title OR OLD.content_text IS DISTINCT FROM NEW.content_text OR OLD.summary IS DISTINCT FROM NEW.summary OR OLD.status IS DISTINCT FROM NEW.status OR OLD.sensitivity IS DISTINCT FROM NEW.sensitivity)
 EXECUTE FUNCTION public.create_document_version();
@@ -411,14 +469,21 @@ CREATE TABLE IF NOT EXISTS public.document_templates (
   usage_count INTEGER DEFAULT 0
 );
 ALTER TABLE public.document_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own templates" ON public.document_templates;
 CREATE POLICY "Users can view their own templates" ON public.document_templates FOR SELECT USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can view public templates" ON public.document_templates;
 CREATE POLICY "Users can view public templates" ON public.document_templates FOR SELECT USING (is_public = true);
+DROP POLICY IF EXISTS "Users can create their own templates" ON public.document_templates;
 CREATE POLICY "Users can create their own templates" ON public.document_templates FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own templates" ON public.document_templates;
 CREATE POLICY "Users can update their own templates" ON public.document_templates FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can delete their own templates" ON public.document_templates;
 CREATE POLICY "Users can delete their own templates" ON public.document_templates FOR DELETE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Admins can view all templates" ON public.document_templates;
 CREATE POLICY "Admins can view all templates" ON public.document_templates FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 CREATE INDEX IF NOT EXISTS idx_templates_created_by ON public.document_templates(created_by);
 CREATE INDEX IF NOT EXISTS idx_templates_category ON public.document_templates(category);
+DROP TRIGGER IF EXISTS update_templates_updated_at ON public.document_templates;
 CREATE TRIGGER update_templates_updated_at BEFORE UPDATE ON public.document_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== signature requests =====
@@ -469,32 +534,45 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
     AND (ds.signer_user_id = _user_id OR ds.signer_email = _user_email));
 $$;
 
+DROP POLICY IF EXISTS "Users can view signature requests for their documents" ON public.signature_requests;
 CREATE POLICY "Users can view signature requests for their documents" ON public.signature_requests FOR SELECT
 USING (requested_by = auth.uid() OR public.can_access_signature_request(id, auth.uid()) OR public.is_signer_for_request(id, auth.uid(), auth.email()));
+DROP POLICY IF EXISTS "Users can create signature requests for their documents" ON public.signature_requests;
 CREATE POLICY "Users can create signature requests for their documents" ON public.signature_requests FOR INSERT
 WITH CHECK (requested_by = auth.uid() AND EXISTS (SELECT 1 FROM public.documents WHERE id = signature_requests.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can update their own signature requests" ON public.signature_requests;
 CREATE POLICY "Users can update their own signature requests" ON public.signature_requests FOR UPDATE USING (requested_by = auth.uid());
+DROP POLICY IF EXISTS "Admins can view all signature requests" ON public.signature_requests;
 CREATE POLICY "Admins can view all signature requests" ON public.signature_requests FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Users can view signers for requests they can access" ON public.document_signers;
 CREATE POLICY "Users can view signers for requests they can access" ON public.document_signers FOR SELECT
 USING (public.can_access_signature_request(signature_request_id, auth.uid()) OR signer_email = auth.email() OR signer_user_id = auth.uid());
+DROP POLICY IF EXISTS "Request creators can add signers" ON public.document_signers;
 CREATE POLICY "Request creators can add signers" ON public.document_signers FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.signature_requests WHERE id = document_signers.signature_request_id AND requested_by = auth.uid()));
+DROP POLICY IF EXISTS "Signers can update their own status" ON public.document_signers;
 CREATE POLICY "Signers can update their own status" ON public.document_signers FOR UPDATE USING (signer_email = auth.email() OR signer_user_id = auth.uid());
+DROP POLICY IF EXISTS "Admins can view all signers" ON public.document_signers;
 CREATE POLICY "Admins can view all signers" ON public.document_signers FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Users can view signatures for requests they can access" ON public.signatures;
 CREATE POLICY "Users can view signatures for requests they can access" ON public.signatures FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.document_signers ds JOIN public.signature_requests sr ON sr.id = ds.signature_request_id
   WHERE ds.id = signatures.document_signer_id AND (sr.requested_by = auth.uid() OR ds.signer_email = auth.email() OR ds.signer_user_id = auth.uid()
   OR EXISTS (SELECT 1 FROM public.documents WHERE id = sr.document_id AND created_by = auth.uid()))));
+DROP POLICY IF EXISTS "Signers can create their own signatures" ON public.signatures;
 CREATE POLICY "Signers can create their own signatures" ON public.signatures FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.document_signers WHERE id = signatures.document_signer_id AND (signer_email = auth.email() OR signer_user_id = auth.uid())));
+DROP POLICY IF EXISTS "Admins can view all signatures" ON public.signatures;
 CREATE POLICY "Admins can view all signatures" ON public.signatures FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Signers can view documents they need to sign" ON public.documents;
 CREATE POLICY "Signers can view documents they need to sign" ON public.documents FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM signature_requests sr JOIN document_signers ds ON ds.signature_request_id = sr.id
   WHERE sr.document_id = documents.id AND (ds.signer_email = auth.email() OR ds.signer_user_id = auth.uid())));
 
+DROP TRIGGER IF EXISTS update_signature_requests_updated_at ON public.signature_requests;
 CREATE TRIGGER update_signature_requests_updated_at BEFORE UPDATE ON public.signature_requests FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE OR REPLACE FUNCTION public.check_signature_request_completion()
@@ -506,6 +584,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS auto_complete_signature_request ON public.document_signers;
 CREATE TRIGGER auto_complete_signature_request AFTER UPDATE ON public.document_signers FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION public.check_signature_request_completion();
 
@@ -550,36 +629,56 @@ ALTER TABLE public.document_metadata ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.taxonomies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.document_taxonomies ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone can view active metadata fields" ON public.metadata_field_definitions;
 CREATE POLICY "Anyone can view active metadata fields" ON public.metadata_field_definitions FOR SELECT USING (is_active = true);
+DROP POLICY IF EXISTS "Users can create metadata fields" ON public.metadata_field_definitions;
 CREATE POLICY "Users can create metadata fields" ON public.metadata_field_definitions FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own metadata fields" ON public.metadata_field_definitions;
 CREATE POLICY "Users can update their own metadata fields" ON public.metadata_field_definitions FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Admins can manage all metadata fields" ON public.metadata_field_definitions;
 CREATE POLICY "Admins can manage all metadata fields" ON public.metadata_field_definitions FOR ALL USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Users can view metadata for their documents" ON public.document_metadata;
 CREATE POLICY "Users can view metadata for their documents" ON public.document_metadata FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can add metadata to their documents" ON public.document_metadata;
 CREATE POLICY "Users can add metadata to their documents" ON public.document_metadata FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can update metadata on their documents" ON public.document_metadata;
 CREATE POLICY "Users can update metadata on their documents" ON public.document_metadata FOR UPDATE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can delete metadata from their documents" ON public.document_metadata;
 CREATE POLICY "Users can delete metadata from their documents" ON public.document_metadata FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all document metadata" ON public.document_metadata;
 CREATE POLICY "Admins can view all document metadata" ON public.document_metadata FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Anyone can view active taxonomies" ON public.taxonomies;
 CREATE POLICY "Anyone can view active taxonomies" ON public.taxonomies FOR SELECT USING (is_active = true);
+DROP POLICY IF EXISTS "Users can create taxonomies" ON public.taxonomies;
 CREATE POLICY "Users can create taxonomies" ON public.taxonomies FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own taxonomies" ON public.taxonomies;
 CREATE POLICY "Users can update their own taxonomies" ON public.taxonomies FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Admins can manage all taxonomies" ON public.taxonomies;
 CREATE POLICY "Admins can manage all taxonomies" ON public.taxonomies FOR ALL USING (public.has_role(auth.uid(),'admin'));
 
+DROP POLICY IF EXISTS "Users can view taxonomies for their documents" ON public.document_taxonomies;
 CREATE POLICY "Users can view taxonomies for their documents" ON public.document_taxonomies FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_taxonomies.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can add taxonomies to their documents" ON public.document_taxonomies;
 CREATE POLICY "Users can add taxonomies to their documents" ON public.document_taxonomies FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_taxonomies.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can remove taxonomies from their documents" ON public.document_taxonomies;
 CREATE POLICY "Users can remove taxonomies from their documents" ON public.document_taxonomies FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_taxonomies.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all document taxonomies" ON public.document_taxonomies;
 CREATE POLICY "Admins can view all document taxonomies" ON public.document_taxonomies FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
+DROP TRIGGER IF EXISTS update_metadata_field_definitions_updated_at ON public.metadata_field_definitions;
 CREATE TRIGGER update_metadata_field_definitions_updated_at BEFORE UPDATE ON public.metadata_field_definitions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_document_metadata_updated_at ON public.document_metadata;
 CREATE TRIGGER update_document_metadata_updated_at BEFORE UPDATE ON public.document_metadata FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_taxonomies_updated_at ON public.taxonomies;
 CREATE TRIGGER update_taxonomies_updated_at BEFORE UPDATE ON public.taxonomies FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE OR REPLACE FUNCTION public.update_taxonomy_path()
@@ -591,6 +690,7 @@ BEGIN
     NEW.path := parent_path||NEW.id::text||'/'; NEW.level := parent_level+1; END IF;
   RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS set_taxonomy_path ON public.taxonomies;
 CREATE TRIGGER set_taxonomy_path BEFORE INSERT OR UPDATE ON public.taxonomies FOR EACH ROW EXECUTE FUNCTION public.update_taxonomy_path();
 
 -- ===== metadata_templates =====
@@ -610,16 +710,25 @@ CREATE TABLE IF NOT EXISTS public.metadata_template_fields (
 );
 ALTER TABLE public.metadata_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.metadata_template_fields ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone can view active templates" ON public.metadata_templates;
 CREATE POLICY "Anyone can view active templates" ON public.metadata_templates FOR SELECT USING (is_active = true);
+DROP POLICY IF EXISTS "Users can view their own metadata templates" ON public.metadata_templates;
 CREATE POLICY "Users can view their own metadata templates" ON public.metadata_templates FOR SELECT USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can create metadata templates" ON public.metadata_templates;
 CREATE POLICY "Users can create metadata templates" ON public.metadata_templates FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own metadata templates" ON public.metadata_templates;
 CREATE POLICY "Users can update their own metadata templates" ON public.metadata_templates FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Admins can manage all metadata templates" ON public.metadata_templates;
 CREATE POLICY "Admins can manage all metadata templates" ON public.metadata_templates FOR ALL USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Anyone can view template fields for active templates" ON public.metadata_template_fields;
 CREATE POLICY "Anyone can view template fields for active templates" ON public.metadata_template_fields FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.metadata_templates WHERE id = template_id AND is_active = true));
+DROP POLICY IF EXISTS "Users can manage fields for their own templates" ON public.metadata_template_fields;
 CREATE POLICY "Users can manage fields for their own templates" ON public.metadata_template_fields FOR ALL
 USING (EXISTS (SELECT 1 FROM public.metadata_templates WHERE id = template_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can manage all template fields" ON public.metadata_template_fields;
 CREATE POLICY "Admins can manage all template fields" ON public.metadata_template_fields FOR ALL USING (public.has_role(auth.uid(),'admin'));
+DROP TRIGGER IF EXISTS update_metadata_templates_updated_at ON public.metadata_templates;
 CREATE TRIGGER update_metadata_templates_updated_at BEFORE UPDATE ON public.metadata_templates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== audit_log =====
@@ -629,8 +738,11 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
   user_id UUID, created_at TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admins can view audit logs" ON public.audit_log;
 CREATE POLICY "Admins can view audit logs" ON public.audit_log FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can insert audit logs for their actions" ON public.audit_log;
 CREATE POLICY "Users can insert audit logs for their actions" ON public.audit_log FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can delete audit logs" ON public.audit_log;
 CREATE POLICY "Admins can delete audit logs" ON public.audit_log FOR DELETE TO authenticated USING (public.has_role(auth.uid(),'admin'));
 
 CREATE OR REPLACE FUNCTION public.log_audit_entry()
@@ -642,8 +754,11 @@ BEGIN
   END IF;
   RETURN NULL;
 END; $$;
+DROP TRIGGER IF EXISTS audit_documents_insert ON public.documents;
 CREATE TRIGGER audit_documents_insert AFTER INSERT ON public.documents FOR EACH ROW EXECUTE FUNCTION public.log_audit_entry();
+DROP TRIGGER IF EXISTS audit_documents_update ON public.documents;
 CREATE TRIGGER audit_documents_update AFTER UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.log_audit_entry();
+DROP TRIGGER IF EXISTS audit_documents_delete ON public.documents;
 CREATE TRIGGER audit_documents_delete AFTER DELETE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.log_audit_entry();
 
 -- ===== pdf_conversions =====
@@ -658,10 +773,15 @@ CREATE TABLE IF NOT EXISTS public.pdf_conversions (
   completed_at TIMESTAMPTZ
 );
 ALTER TABLE public.pdf_conversions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own conversions" ON public.pdf_conversions;
 CREATE POLICY "Users can view their own conversions" ON public.pdf_conversions FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert their own conversions" ON public.pdf_conversions;
 CREATE POLICY "Users can insert their own conversions" ON public.pdf_conversions FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update their own conversions" ON public.pdf_conversions;
 CREATE POLICY "Users can update their own conversions" ON public.pdf_conversions FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete their own conversions" ON public.pdf_conversions;
 CREATE POLICY "Users can delete their own conversions" ON public.pdf_conversions FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all conversions" ON public.pdf_conversions;
 CREATE POLICY "Admins can view all conversions" ON public.pdf_conversions FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 CREATE INDEX IF NOT EXISTS idx_pdf_conversions_user_created ON public.pdf_conversions(user_id, created_at DESC);
 
@@ -674,8 +794,11 @@ CREATE TABLE IF NOT EXISTS public.application_logs (
   user_id UUID, session_id TEXT, url TEXT, user_agent TEXT, ip_address TEXT
 );
 ALTER TABLE public.application_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own logs" ON public.application_logs;
 CREATE POLICY "Users can view their own logs" ON public.application_logs FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
+DROP POLICY IF EXISTS "Admins can view all logs" ON public.application_logs;
 CREATE POLICY "Admins can view all logs" ON public.application_logs FOR SELECT USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin'));
+DROP POLICY IF EXISTS "Service role can insert logs" ON public.application_logs;
 CREATE POLICY "Service role can insert logs" ON public.application_logs FOR INSERT WITH CHECK (true);
 CREATE INDEX IF NOT EXISTS idx_application_logs_created_at ON public.application_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_application_logs_level ON public.application_logs(level);
@@ -698,11 +821,16 @@ CREATE TABLE IF NOT EXISTS public.document_chunks (
 );
 ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id ON public.document_chunks(document_id);
+DROP POLICY IF EXISTS "Users can view chunks for their own documents" ON public.document_chunks;
 CREATE POLICY "Users can view chunks for their own documents" ON public.document_chunks FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_chunks.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all document chunks" ON public.document_chunks;
 CREATE POLICY "Admins can view all document chunks" ON public.document_chunks FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Service role can insert document chunks" ON public.document_chunks;
 CREATE POLICY "Service role can insert document chunks" ON public.document_chunks FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role can update document chunks" ON public.document_chunks;
 CREATE POLICY "Service role can update document chunks" ON public.document_chunks FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Service role can delete document chunks" ON public.document_chunks;
 CREATE POLICY "Service role can delete document chunks" ON public.document_chunks FOR DELETE USING (true);
 
 -- ===== document_processing_queue =====
@@ -719,9 +847,13 @@ CREATE TABLE IF NOT EXISTS public.document_processing_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_queue_status_priority ON public.document_processing_queue(status, priority DESC, created_at);
 ALTER TABLE public.document_processing_queue ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own queue items" ON public.document_processing_queue;
 CREATE POLICY "Users can view their own queue items" ON public.document_processing_queue FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert their own queue items" ON public.document_processing_queue;
 CREATE POLICY "Users can insert their own queue items" ON public.document_processing_queue FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "System can update queue items" ON public.document_processing_queue;
 CREATE POLICY "System can update queue items" ON public.document_processing_queue FOR UPDATE USING (true);
+DROP TRIGGER IF EXISTS update_queue_updated_at ON public.document_processing_queue;
 CREATE TRIGGER update_queue_updated_at BEFORE UPDATE ON public.document_processing_queue FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== document_enriched_metadata =====
@@ -737,16 +869,22 @@ CREATE TABLE IF NOT EXISTS public.document_enriched_metadata (
   CONSTRAINT unique_document_enriched_metadata UNIQUE(document_id)
 );
 ALTER TABLE public.document_enriched_metadata ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view enriched metadata for their documents" ON public.document_enriched_metadata;
 CREATE POLICY "Users can view enriched metadata for their documents" ON public.document_enriched_metadata FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_enriched_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can insert enriched metadata for their documents" ON public.document_enriched_metadata;
 CREATE POLICY "Users can insert enriched metadata for their documents" ON public.document_enriched_metadata FOR INSERT
 WITH CHECK (EXISTS (SELECT 1 FROM public.documents WHERE id = document_enriched_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can update enriched metadata for their documents" ON public.document_enriched_metadata;
 CREATE POLICY "Users can update enriched metadata for their documents" ON public.document_enriched_metadata FOR UPDATE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_enriched_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Users can delete enriched metadata for their documents" ON public.document_enriched_metadata;
 CREATE POLICY "Users can delete enriched metadata for their documents" ON public.document_enriched_metadata FOR DELETE
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = document_enriched_metadata.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Admins can view all enriched metadata" ON public.document_enriched_metadata;
 CREATE POLICY "Admins can view all enriched metadata" ON public.document_enriched_metadata FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 CREATE INDEX IF NOT EXISTS idx_document_enriched_metadata_document_id ON public.document_enriched_metadata(document_id);
+DROP TRIGGER IF EXISTS update_document_enriched_metadata_updated_at ON public.document_enriched_metadata;
 CREATE TRIGGER update_document_enriched_metadata_updated_at BEFORE UPDATE ON public.document_enriched_metadata FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== organization_rules & audit =====
@@ -773,18 +911,28 @@ CREATE TABLE IF NOT EXISTS public.organization_audit (
 );
 ALTER TABLE public.organization_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organization_audit ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own rules" ON public.organization_rules;
 CREATE POLICY "Users can view their own rules" ON public.organization_rules FOR SELECT USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can create their own rules" ON public.organization_rules;
 CREATE POLICY "Users can create their own rules" ON public.organization_rules FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own rules" ON public.organization_rules;
 CREATE POLICY "Users can update their own rules" ON public.organization_rules FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can delete their own rules" ON public.organization_rules;
 CREATE POLICY "Users can delete their own rules" ON public.organization_rules FOR DELETE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Admins can view all rules" ON public.organization_rules;
 CREATE POLICY "Admins can view all rules" ON public.organization_rules FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Users can view audit for their documents" ON public.organization_audit;
 CREATE POLICY "Users can view audit for their documents" ON public.organization_audit FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.documents WHERE id = organization_audit.document_id AND created_by = auth.uid()));
+DROP POLICY IF EXISTS "Service can insert audit records" ON public.organization_audit;
 CREATE POLICY "Service can insert audit records" ON public.organization_audit FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Admins can view all audit" ON public.organization_audit;
 CREATE POLICY "Admins can view all audit" ON public.organization_audit FOR SELECT USING (public.has_role(auth.uid(),'admin'));
+DROP POLICY IF EXISTS "Admins can delete organization audit" ON public.organization_audit;
 CREATE POLICY "Admins can delete organization audit" ON public.organization_audit FOR DELETE TO authenticated USING (public.has_role(auth.uid(),'admin'));
 CREATE INDEX IF NOT EXISTS idx_organization_rules_active ON public.organization_rules(is_active, priority DESC);
 CREATE INDEX IF NOT EXISTS idx_organization_audit_document ON public.organization_audit(document_id, performed_at DESC);
+DROP TRIGGER IF EXISTS update_organization_rules_updated_at ON public.organization_rules;
 CREATE TRIGGER update_organization_rules_updated_at BEFORE UPDATE ON public.organization_rules FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ===== profiles =====
@@ -795,8 +943,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can view profiles" ON public.profiles;
 CREATE POLICY "Authenticated users can view profiles" ON public.profiles FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -826,9 +977,13 @@ CREATE TABLE IF NOT EXISTS public.user_messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE public.user_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view messages they sent or received" ON public.user_messages;
 CREATE POLICY "Users can view messages they sent or received" ON public.user_messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+DROP POLICY IF EXISTS "Users can send messages" ON public.user_messages;
 CREATE POLICY "Users can send messages" ON public.user_messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+DROP POLICY IF EXISTS "Users can mark messages as read" ON public.user_messages;
 CREATE POLICY "Users can mark messages as read" ON public.user_messages FOR UPDATE USING (auth.uid() = receiver_id) WITH CHECK (auth.uid() = receiver_id);
+DROP POLICY IF EXISTS "Users can delete messages they sent or received" ON public.user_messages;
 CREATE POLICY "Users can delete messages they sent or received" ON public.user_messages FOR DELETE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 CREATE INDEX IF NOT EXISTS idx_user_messages_sender ON public.user_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_user_messages_receiver ON public.user_messages(receiver_id);
@@ -844,10 +999,13 @@ CREATE TABLE IF NOT EXISTS public.message_reactions (
 );
 ALTER TABLE public.message_reactions ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_message_reactions_message_id ON public.message_reactions(message_id);
+DROP POLICY IF EXISTS "Users can view reactions on messages they can see" ON public.message_reactions;
 CREATE POLICY "Users can view reactions on messages they can see" ON public.message_reactions FOR SELECT
 USING (EXISTS (SELECT 1 FROM public.user_messages m WHERE m.id = message_reactions.message_id AND (m.sender_id = auth.uid() OR m.receiver_id = auth.uid())));
+DROP POLICY IF EXISTS "Users can add reactions to messages they can see" ON public.message_reactions;
 CREATE POLICY "Users can add reactions to messages they can see" ON public.message_reactions FOR INSERT
 WITH CHECK (auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.user_messages m WHERE m.id = message_reactions.message_id AND (m.sender_id = auth.uid() OR m.receiver_id = auth.uid())));
+DROP POLICY IF EXISTS "Users can remove their own reactions" ON public.message_reactions;
 CREATE POLICY "Users can remove their own reactions" ON public.message_reactions FOR DELETE USING (auth.uid() = user_id);
 
 -- ===== translation_history =====
@@ -862,9 +1020,13 @@ CREATE TABLE IF NOT EXISTS public.translation_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE public.translation_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own translation history" ON public.translation_history;
 CREATE POLICY "Users can view their own translation history" ON public.translation_history FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert their own translation history" ON public.translation_history;
 CREATE POLICY "Users can insert their own translation history" ON public.translation_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete their own translation history" ON public.translation_history;
 CREATE POLICY "Users can delete their own translation history" ON public.translation_history FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all translation history" ON public.translation_history;
 CREATE POLICY "Admins can view all translation history" ON public.translation_history FOR SELECT USING (public.has_role(auth.uid(),'admin'));
 
 -- ===== Storage buckets =====
@@ -874,40 +1036,60 @@ INSERT INTO storage.buckets (id,name,public) VALUES ('chat-files','chat-files',t
 INSERT INTO storage.buckets (id,name,public) VALUES ('translations','translations',false) ON CONFLICT (id) DO NOTHING;
 
 -- documents bucket policies
+DROP POLICY IF EXISTS "Users can upload their own documents" ON storage.objects;
 CREATE POLICY "Users can upload their own documents" ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
+DROP POLICY IF EXISTS "Users can view their own documents" ON storage.objects;
 CREATE POLICY "Users can view their own documents" ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
+DROP POLICY IF EXISTS "Users can delete their own documents" ON storage.objects;
 CREATE POLICY "Users can delete their own documents" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
+DROP POLICY IF EXISTS "Users can upload to their own OCR folder" ON storage.objects;
 CREATE POLICY "Users can upload to their own OCR folder" ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (bucket_id = 'documents' AND (storage.foldername(name))[1] = 'ocr' AND (storage.foldername(name))[2] = auth.uid()::text);
+DROP POLICY IF EXISTS "Users can read their own OCR files" ON storage.objects;
 CREATE POLICY "Users can read their own OCR files" ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = 'ocr' AND (storage.foldername(name))[2] = auth.uid()::text);
+DROP POLICY IF EXISTS "Users can delete their own OCR files" ON storage.objects;
 CREATE POLICY "Users can delete their own OCR files" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'documents' AND (storage.foldername(name))[1] = 'ocr' AND (storage.foldername(name))[2] = auth.uid()::text);
+DROP POLICY IF EXISTS "Allow authenticated users to upload documents" ON storage.objects;
 CREATE POLICY "Allow authenticated users to upload documents" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'documents');
+DROP POLICY IF EXISTS "Allow authenticated users to read their documents" ON storage.objects;
 CREATE POLICY "Allow authenticated users to read their documents" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'documents');
+DROP POLICY IF EXISTS "Allow authenticated users to update their documents" ON storage.objects;
 CREATE POLICY "Allow authenticated users to update their documents" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'documents') WITH CHECK (bucket_id = 'documents');
+DROP POLICY IF EXISTS "Allow authenticated users to delete their documents" ON storage.objects;
 CREATE POLICY "Allow authenticated users to delete their documents" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'documents');
 
 -- template-images
+DROP POLICY IF EXISTS "Authenticated users can upload template images" ON storage.objects;
 CREATE POLICY "Authenticated users can upload template images" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'template-images');
+DROP POLICY IF EXISTS "Anyone can view template images" ON storage.objects;
 CREATE POLICY "Anyone can view template images" ON storage.objects FOR SELECT TO public USING (bucket_id = 'template-images');
+DROP POLICY IF EXISTS "Users can update their own template images" ON storage.objects;
 CREATE POLICY "Users can update their own template images" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'template-images');
+DROP POLICY IF EXISTS "Users can delete their own template images" ON storage.objects;
 CREATE POLICY "Users can delete their own template images" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'template-images');
 
 -- chat-files
+DROP POLICY IF EXISTS "Authenticated users can upload chat files" ON storage.objects;
 CREATE POLICY "Authenticated users can upload chat files" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'chat-files');
+DROP POLICY IF EXISTS "Anyone can view chat files" ON storage.objects;
 CREATE POLICY "Anyone can view chat files" ON storage.objects FOR SELECT USING (bucket_id = 'chat-files');
+DROP POLICY IF EXISTS "Users can delete their own chat files" ON storage.objects;
 CREATE POLICY "Users can delete their own chat files" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'chat-files' AND auth.uid()::text = (storage.foldername(name))[1]);
 
 -- translations
+DROP POLICY IF EXISTS "Users can upload their own translations" ON storage.objects;
 CREATE POLICY "Users can upload their own translations" ON storage.objects FOR INSERT
 WITH CHECK (bucket_id = 'translations' AND auth.uid()::text = (storage.foldername(name))[1]);
+DROP POLICY IF EXISTS "Users can view their own translations" ON storage.objects;
 CREATE POLICY "Users can view their own translations" ON storage.objects FOR SELECT
 USING (bucket_id = 'translations' AND auth.uid()::text = (storage.foldername(name))[1]);
+DROP POLICY IF EXISTS "Users can delete their own translations" ON storage.objects;
 CREATE POLICY "Users can delete their own translations" ON storage.objects FOR DELETE
 USING (bucket_id = 'translations' AND auth.uid()::text = (storage.foldername(name))[1]);
 

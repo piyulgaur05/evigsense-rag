@@ -1,3 +1,5 @@
 /node_modules
 .claude
 dist/**
+# Fetched at setup time, not source (see docker/volumes/vllm/README.md)
+docker/volumes/vllm/*.jinja

@@ -16,9 +16,9 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 
 const perimeter = [
-  { label: "model", value: "lm studio · localhost:1234" },
+  { label: "model", value: "qwen3.5-35b · vllm + lm studio" },
   { label: "index", value: "postgres + pgvector · your machine" },
-  { label: "egress", value: "0 outbound requests" },
+  { label: "egress", value: "self-hosted endpoints only" },
 ];
 
 /** A real sequence, which is why these are numbered. */

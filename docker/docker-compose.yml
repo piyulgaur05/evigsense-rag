@@ -4,7 +4,7 @@
 # After first boot, run: ./scripts/apply-migrations.sh
 # Then create admin user via Studio (http://localhost:54323) — see README.md.
 
-name: spark-start-genie-offline
+name: jyoma-ai-offline
 
 services:
   db:
@@ -125,6 +125,24 @@ services:
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_DB_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      # Chat LLM: remote vLLM (see CHAT_BASE_URL in .env). Unset => LM Studio.
+      CHAT_BASE_URL: ${CHAT_BASE_URL:-}
+      CHAT_API_KEY: ${CHAT_API_KEY:-}
+      CHAT_MODEL: ${CHAT_MODEL:-}
+      # Per-role endpoint overrides; each falls back to LMSTUDIO_BASE_URL.
+      TRANSLATE_BASE_URL: ${TRANSLATE_BASE_URL:-}
+      OCR_BASE_URL: ${OCR_BASE_URL:-}
+      # Embeddings: Qwen3-VL-Embedding-2B on vLLM, MRL-truncated to 1024.
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_DIMENSIONS: ${EMBED_DIMENSIONS:-}
+      # Reranking: opt-in, skipped entirely when RERANK_MODEL is empty.
+      RERANK_BASE_URL: ${RERANK_BASE_URL:-}
+      RERANK_API_KEY: ${RERANK_API_KEY:-}
+      RERANK_MODEL: ${RERANK_MODEL:-}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-50}
+      RERANK_TOP_K: ${RERANK_TOP_K:-8}
       LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL}
       LMSTUDIO_API_KEY: ${LMSTUDIO_API_KEY}
       LMSTUDIO_CHAT_MODEL: ${LMSTUDIO_CHAT_MODEL}
@@ -189,7 +207,7 @@ services:
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DEFAULT_ORGANIZATION_NAME: Evigsense
-      DEFAULT_PROJECT_NAME: spark-start-genie
+      DEFAULT_PROJECT_NAME: jyoma-ai-studio
       SUPABASE_URL: http://kong:8000
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}
