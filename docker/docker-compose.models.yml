@@ -80,7 +80,7 @@ services:
   # than anything else you can change here.
   vllm-chat:
     <<: *vllm-common
-    container_name: vllm-chat
+    container_name: jyoma-vllm-chat
     ports:
       - "${VLLM_CHAT_PORT:-8101}:8000"
     command:
@@ -101,7 +101,7 @@ services:
   # interface Chandra's vLLM deployment exposes.
   vllm-ocr:
     <<: *vllm-common
-    container_name: vllm-ocr
+    container_name: jyoma-vllm-ocr
     depends_on:
       vllm-chat:
         condition: service_healthy
@@ -126,7 +126,7 @@ services:
   # (EMBED_DIMENSIONS), not here.
   vllm-embed:
     <<: *vllm-common
-    container_name: vllm-embed
+    container_name: jyoma-vllm-embed
     depends_on:
       vllm-ocr:
         condition: service_healthy
@@ -152,7 +152,7 @@ services:
   # Without it the container exits at startup.
   vllm-rerank:
     <<: *vllm-common
-    container_name: vllm-rerank
+    container_name: jyoma-vllm-rerank
     depends_on:
       vllm-embed:
         condition: service_healthy

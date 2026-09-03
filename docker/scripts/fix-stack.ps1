@@ -15,8 +15,10 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-$composeProject = "spark-start-genie-offline"
-$dbContainer    = "$composeProject-db-1"
+$composeProject = "jyoma-ai-offline"
+# Explicit container_name in docker-compose.yml, not a compose-generated
+# <project>-db-1 name.
+$dbContainer    = "jyoma-postgres"
 
 function Invoke-Psql([string]$sql) {
   $sql | docker exec -i $dbContainer psql -U postgres -d postgres -v ON_ERROR_STOP=1

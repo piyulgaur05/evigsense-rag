@@ -126,7 +126,7 @@ Seeding runs automatically at the end and creates the three users.
 
 ```bash
 # Per-role routing — the single most useful check
-docker logs jyoma-ai-offline-functions-1 2>&1 | grep '^\[ai\]'
+docker logs jyoma-edge-functions 2>&1 | grep '^\[ai\]'
 ```
 
 Expect all six roles pointing at `vllm-*` service names. This log also **warns** if a

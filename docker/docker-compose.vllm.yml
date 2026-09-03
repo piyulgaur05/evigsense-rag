@@ -81,7 +81,7 @@ services:
   # is Matryoshka truncation the model was trained for.
   vllm-embed:
     <<: *vllm-common
-    container_name: vllm-embed
+    container_name: jyoma-vllm-embed
     ports:
       - "${VLLM_EMBED_PORT:-8103}:8000"
     # Shell form so an unset VLLM_QUANTIZATION collapses away instead of being
@@ -107,7 +107,7 @@ services:
   #     https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
   vllm-rerank:
     <<: *vllm-common
-    container_name: vllm-rerank
+    container_name: jyoma-vllm-rerank
     # Serialised behind the embedder: two models warming up together spikes
     # allocation well above steady state and OOMs a small card.
     depends_on:

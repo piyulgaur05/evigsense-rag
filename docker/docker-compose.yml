@@ -8,6 +8,7 @@ name: jyoma-ai-offline
 
 services:
   db:
+    container_name: jyoma-postgres   # Postgres 15 + pgvector
     image: supabase/postgres:15.8.1.060
     restart: unless-stopped
     ports:
@@ -30,6 +31,7 @@ services:
       retries: 10
 
   auth:
+    container_name: jyoma-auth   # GoTrue
     image: supabase/gotrue:v2.170.0
     restart: unless-stopped
     depends_on:
@@ -53,6 +55,7 @@ services:
       GOTRUE_MAILER_AUTOCONFIRM: "true"
 
   rest:
+    container_name: jyoma-postgrest   # PostgREST
     image: postgrest/postgrest:v12.2.8
     restart: unless-stopped
     depends_on:
@@ -66,6 +69,7 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: "false"
 
   realtime:
+    container_name: jyoma-realtime
     image: supabase/realtime:v2.34.47
     restart: unless-stopped
     depends_on:
@@ -90,6 +94,7 @@ services:
       RUN_JANITOR: "true"
 
   storage:
+    container_name: jyoma-storage
     image: supabase/storage-api:v1.19.3
     restart: unless-stopped
     depends_on:
@@ -114,6 +119,7 @@ services:
       - storage-data:/var/lib/storage
 
   functions:
+    container_name: jyoma-edge-functions   # Deno edge runtime
     image: supabase/edge-runtime:v1.67.4
     restart: unless-stopped
     depends_on:
@@ -173,6 +179,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   kong:
+    container_name: jyoma-kong   # API gateway, :8000
     image: kong:2.8.1
     restart: unless-stopped
     ports:
@@ -195,6 +202,7 @@ services:
       - ./volumes/api/kong.yml:/var/lib/kong/kong.yml:ro
 
   studio:
+    container_name: jyoma-studio
     image: supabase/studio:20250317-6955350
     restart: unless-stopped
     ports:
@@ -214,6 +222,7 @@ services:
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
 
   meta:
+    container_name: jyoma-postgres-meta   # postgres-meta, backs Studio
     image: supabase/postgres-meta:v0.87.1
     restart: unless-stopped
     depends_on:
@@ -233,6 +242,7 @@ services:
   # network. home_mode suppresses the welcome/feedback popups (its 20-connection
   # / 10-document cap is irrelevant for a self-hosted offline deployment).
   collabora:
+    container_name: jyoma-collabora
     # Pinned by digest so a `compose pull` on a disconnected host cannot drift.
     image: collabora/code@sha256:6b70f91f0b6e9c76f75f162f58ef0a12cf9415d78e14713d33c0318ddc4a2cc0
     restart: unless-stopped

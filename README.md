@@ -80,9 +80,9 @@ It drops and rebuilds the `storage` + `_realtime` schemas, lets storage re-migra
 If the bootstrap migration was applied partially the `application_logs` table can be missing while everything else is present. Apply the recovery script from inside the db container and tell PostgREST to reload its schema cache:
 
 ```powershell
-docker cp scripts/create-application-logs.sql spark-start-genie-offline-db-1:/tmp/create-application-logs.sql
-docker exec spark-start-genie-offline-db-1 psql -U postgres -d postgres -f /tmp/create-application-logs.sql
-docker exec spark-start-genie-offline-db-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+docker cp scripts/create-application-logs.sql jyoma-postgres:/tmp/create-application-logs.sql
+docker exec jyoma-postgres psql -U postgres -d postgres -f /tmp/create-application-logs.sql
+docker exec jyoma-postgres psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
 ```
 
 #### Edge Functions read empty env vars (`supabaseUrl is required`, embedding/OCR fall back to defaults)?

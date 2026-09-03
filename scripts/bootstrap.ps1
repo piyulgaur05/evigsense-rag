@@ -41,9 +41,12 @@ if (-not $Container) {
   if ($LASTEXITCODE -eq 0 -and $id) {
     $Container = (docker inspect -f '{{.Name}}' $id).TrimStart('/')
   } else {
-    # Fall back to <compose name:>-db-1 so a stopped stack still resolves.
-    $name = (Select-String -Path $composeFile -Pattern '^name:\s*(\S+)' | Select-Object -First 1).Matches[0].Groups[1].Value
-    $Container = "$name-db-1"
+    # Fall back to the db service's explicit container_name so a stopped stack
+    # still resolves. Compose only generates <project>-db-1 style names when no
+    # container_name is set, and this file sets one.
+    $m = Select-String -Path $composeFile -Pattern '^\s*container_name:\s*(\S+)' -Context 0,0 |
+         Where-Object { $_.Line -match 'postgres' } | Select-Object -First 1
+    if ($m) { $Container = $m.Matches[0].Groups[1].Value } else { $Container = "jyoma-postgres" }
   }
   Write-Host "Using db container: $Container" -ForegroundColor DarkGray
 }
