@@ -204,6 +204,84 @@ Edge Functions → vLLM :8101  Qwen3.5-35B-A3B         (chat: assistant, summary
 All four vLLM servers run on one DGX Spark via docker-compose.models.yml.
 ```
 
+## Procurement
+
+A second product inside the same app: a case-centric procurement lifecycle from
+requisition to payment, on the same Postgres, auth and document pipeline.
+
+One `procurement_cases` row is the spine of a purchase. It moves through
+fourteen stages —
+
+```
+draft → mpr → finance → tender → tec → commercial → cst → dpc → pnc
+      → purchase_proposal → purchase_order → goods_receipt
+      → payment_recommendation → closed
+```
+
+— and every stage keeps its own records keyed by `case_id`.
+
+### A separate way in
+
+The portal is not a tab of the document workspace. It has its own entry point on
+the landing page, its own sign-in at `/procurement/sign-in`, and its own shell —
+nothing about it appears in the document workspace header.
+
+Sign-in lands people by desk: a role that owns one stage goes straight to its
+queue, anyone spanning the pipeline starts on the dashboard.
+
+| Route | What it is |
+|---|---|
+| `/procurement/sign-in` | The portal's own door |
+| `/procurement` | Portal dashboard, cut to the desk the account holds: its place in the ten-step chain, its counts, its queues |
+| `/procurement/queue/:queueKey` | A stage queue — the register narrowed to the stages one desk works on |
+| `/procurement/register` | Every case, whatever stage it is at |
+| `/procurement/inbox` | Waiting on you — cases parked where you can act, oldest first |
+| `/procurement/case/:caseNo` | The case file: stage index, the stage's working panel, paperwork, questions, record |
+| `/procurement/new` | Requisition intake |
+
+Queue keys: `requisitions`, `finance`, `tender`, `technical`, `commercial`,
+`opening`, `committee`, `negotiation`, `proposals`, `orders`, `receipts`,
+`payments`. Which of them a person sees comes from
+`src/features/procurement/lib/portals.ts`, which maps each of the sixteen roles
+to a portal — its title, its step in the chain, its queues, its quick actions
+and the stage counts it cares about.
+
+### The stage engine lives in the database
+
+Nothing on the client writes `procurement_cases.stage`. A decision goes through
+`procurement_record_decision(case_id, action_code, remarks, payload)`, which
+looks the move up in `procurement_stage_actions`, checks the permission and any
+chair-only rule, applies the transition and writes the trail.
+
+The legal moves are rows, not code: `procurement_stage_actions` holds the
+buttons a stage offers, and `procurement_return_paths` holds the only backward
+moves allowed. The UI reads the same rows through
+`procurement_available_actions(case_id)`, so it cannot offer a move the engine
+would refuse.
+
+### Roles
+
+Sixteen procurement roles in `procurement_user_roles`, kept apart from the
+`app_role` that governs the document product. Permissions are `<stage>.<verb>`
+keys mapped in `procurement_role_permissions`; `procurement_can_view_case_row()`
+decides who reads a case — its requester, a desk the case has reached, a
+committee member on it, or anyone with `oversight.view`.
+
+### Commands
+
+```bash
+npm run seed:procurement       # one demo account per role, plus demo master data
+npm run check:procurement      # stage engine + RLS, inside a rolled-back transaction
+npm run check:procurement:api  # the same walkthrough through Kong and PostgREST
+npm run gen:types              # regenerate src/integrations/supabase/types.ts
+```
+
+Seeded procurement logins are `requester@`, `finance@`, `tender@`, `tec.chair@`,
+`tec.member@`, `hod@`, `commercial@`, `dpc.chair@`, `dpc.member@`, `pnc.chair@`,
+`pnc.member@`, `approver@`, `po@`, `payments@` and `head@` at `jyoma.ai`, on the
+same seed password as the other accounts. `admin@jyoma.ai` also holds
+`proc_admin`.
+
 ## Model servers on a CUDA host (x86_64)
 
 `docker/docker-compose.vllm.yml` runs the two roles LM Studio cannot serve, and

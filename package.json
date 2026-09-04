@@ -12,6 +12,10 @@
     "migrate": "bash scripts/apply-migrations.sh",
     "seed": "node scripts/seed-users.mjs",
     "seed:users": "node scripts/seed-users.mjs",
+    "seed:procurement": "node scripts/seed-procurement.mjs",
+    "check:procurement": "bash scripts/check-procurement.sh",
+    "check:procurement:api": "node scripts/check-procurement-api.mjs",
+    "gen:types": "bash scripts/gen-types.sh",
     "bootstrap": "powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1"
   },
   "dependencies": {

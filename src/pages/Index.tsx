@@ -9,6 +9,7 @@ import {
   PanelsTopLeft,
   Tags,
 } from "lucide-react";
+import { WORKFLOW_STEPS } from "@/features/procurement/lib/portals";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { CitationTrace } from "@/components/landing/CitationTrace";
@@ -262,18 +263,76 @@ const Index = () => {
           </div>
         </section>
 
+        {/* Procurement portal — the second way in. Deliberately its own band:
+            different people, different sign-in, different product. */}
+        <section id="procurement" className="scroll-mt-20 border-t border-border bg-ink text-ink-foreground">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+            <div className="grid gap-12 lg:grid-cols-[minmax(0,28rem)_1fr] lg:gap-16">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-signal">
+                  procurement portal
+                </p>
+                <h2 className="font-display mt-5 text-[clamp(1.8rem,3.6vw,2.6rem)]">
+                  A separate desk for buying things.
+                </h2>
+                <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-foreground/70">
+                  Requisition, budget clearance, tender, evaluation, committee, negotiation,
+                  order, receipt, payment. Ten desks and one case file, with every decision
+                  signed, timed and attributed.
+                </p>
+                <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-foreground/70">
+                  It runs on the same machine, the same database and the same document pipeline —
+                  anything filed against a case is read, indexed and answerable like everything
+                  else in the archive.
+                </p>
+
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  <Button asChild size="lg">
+                    <Link to="/procurement/sign-in">
+                      Enter the procurement portal
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
+                <p className="mt-4 font-mono text-[11px] text-ink-foreground/50">
+                  separate sign-in · role decides the desk
+                </p>
+              </div>
+
+              <ol className="grid gap-px self-start overflow-hidden rounded-lg border border-white/10 bg-white/10 sm:grid-cols-2">
+                {WORKFLOW_STEPS.map((step) => (
+                  <li key={step.step} className="bg-ink px-5 py-4">
+                    <span className="font-mono text-[11px] tabular-nums text-signal">
+                      {String(step.step).padStart(2, "0")}
+                    </span>
+                    <p className="mt-1.5 text-[14px] text-ink-foreground">{step.name}</p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-ink-foreground/55">
+                      {step.role}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </section>
+
         {/* Close */}
         <section className="border-t border-border bg-muted/30">
           <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:px-8">
             <h2 className="font-display text-[clamp(1.5rem,3vw,2rem)] text-foreground">
               Open your archive.
             </h2>
-            <Button asChild size="lg" className="sm:ml-auto">
-              <Link to="/auth">
-                Sign in
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-3 sm:ml-auto">
+              <Button asChild size="lg" variant="outline">
+                <Link to="/procurement/sign-in">Procurement portal</Link>
+              </Button>
+              <Button asChild size="lg">
+                <Link to="/auth">
+                  Sign in
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
       </main>

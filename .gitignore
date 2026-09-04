@@ -3,3 +3,5 @@
 dist/**
 # Fetched at setup time, not source (see docker/volumes/vllm/README.md)
 docker/volumes/vllm/*.jinja
+# Supabase CLI scratch (npm run gen:types)
+supabase/.temp

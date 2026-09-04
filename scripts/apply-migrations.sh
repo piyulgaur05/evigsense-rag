@@ -78,6 +78,9 @@ fi
 # docker/.env; a missing node warns rather than failing the migration run.
 if command -v node >/dev/null 2>&1; then
   node "$ROOT/scripts/seed-users.mjs"
+  # One demo account per procurement role, plus the demo master data a
+  # walkthrough needs. No-op until the procurement migrations are in.
+  node "$ROOT/scripts/seed-procurement.mjs"
 else
   echo "node not found - skipping user seeding. Run 'npm run seed:users' once Node is available."
 fi
