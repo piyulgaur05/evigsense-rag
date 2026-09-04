@@ -209,6 +209,10 @@ All four vLLM servers run on one DGX Spark via docker-compose.models.yml.
 A second product inside the same app: a case-centric procurement lifecycle from
 requisition to payment, on the same Postgres, auth and document pipeline.
 
+The full reference — every stage, every action, the role matrix, and a
+step-by-step test walkthrough with the account to sign in as at each step — is
+in [PROCUREMENT.md](PROCUREMENT.md).
+
 One `procurement_cases` row is the spine of a purchase. It moves through
 fourteen stages —
 
