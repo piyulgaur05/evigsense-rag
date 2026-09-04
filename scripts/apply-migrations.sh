@@ -15,6 +15,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS_DIR="$ROOT/supabase/migrations"
+if [ -z "${POSTGRES_PASSWORD:-}" ] && [ -f "$ROOT/docker/.env" ]; then
+  POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "$ROOT/docker/.env" | head -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+fi
 PGPASSWORD="${POSTGRES_PASSWORD:-your-super-secret-postgres-password}"
 export PGPASSWORD
 

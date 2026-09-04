@@ -173,5 +173,35 @@ services:
       # Must fit query + the longest candidate chunk in one scoring pass.
       - --max-model-len=${VLLM_RERANK_CTX:-4096}
 
+  # --- OCR relay: rasterizes PDF pages before handing them to vllm-ocr ------
+  # _shared/ocr.ts's chandra-native backend posts raw PDF/image bytes to
+  # POST /ocr expecting { markdown, images } back. vllm-ocr's chat-completions
+  # endpoint needs an actual PNG/JPEG, not raw PDF bytes wrapped as an
+  # image_url — this relay does that conversion (pdf2image) and forwards each
+  # page to vllm-ocr. CPU-only, no GPU reservation.
+  chandra-relay:
+    build: ./chandra-relay
+    container_name: jyoma-chandra-relay
+    restart: unless-stopped
+    depends_on:
+      vllm-ocr:
+        condition: service_healthy
+    ports:
+      - "${CHANDRA_RELAY_PORT:-8105}:8001"
+    environment:
+      OCR_BASE_URL: http://vllm-ocr:8000/v1
+      OCR_MODEL: ${OCR_MODEL:-chandra-ocr-2}
+      OCR_MAX_TOKENS: ${OCR_MAX_TOKENS:-16384}
+      OCR_REASONING_EFFORT: ${OCR_REASONING_EFFORT:-}
+      # Match vllm-ocr's own concurrency ceiling so the relay doesn't queue
+      # more parallel requests than the server will actually run at once.
+      OCR_CONCURRENCY: ${VLLM_OCR_SEQS:-2}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health',timeout=5).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
 volumes:
   hf-cache:

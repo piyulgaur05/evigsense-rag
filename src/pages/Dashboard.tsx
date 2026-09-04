@@ -74,7 +74,7 @@ const Dashboard = () => {
     const [docCount, chunkCount, statusRows, recentRows, queryRows, sigCount, queueRows] =
       await Promise.allSettled([
         supabase.from("documents").select("*", { count: "exact", head: true }),
-        supabase.from("document_chunks").select("*", { count: "exact", head: true }),
+        supabase.from("document_embeddings").select("*", { count: "exact", head: true }),
         supabase.from("documents").select("status"),
         supabase
           .from("documents")

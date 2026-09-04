@@ -139,11 +139,24 @@ async function createUser(base, headers, email, password) {
   return user.id;
 }
 
+function missingSchemaError(body) {
+  return (
+    body.includes("42P01") ||
+    (body.includes("user_roles") && body.includes("does not exist"))
+  );
+}
+
 async function hasRole(base, headers, userId, role) {
   const url = `${base}/rest/v1/user_roles?select=role&user_id=eq.${userId}&role=eq.${role}`;
   const res = await fetch(url, { headers });
   if (!res.ok) {
-    throw new Error(`Checking role for ${userId} failed (${res.status}): ${await res.text()}`);
+    const body = await res.text();
+    if (missingSchemaError(body)) {
+      throw new Error(
+        'Schema is missing (relation "public.user_roles" does not exist). Apply migrations first: npm run migrate',
+      );
+    }
+    throw new Error(`Checking role for ${userId} failed (${res.status}): ${body}`);
   }
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0;
@@ -229,15 +242,18 @@ async function main() {
   console.table(summary);
 
   const created = summary.filter((s) => s.user === "created");
+  const site = cfg("SITE_URL", "http://localhost:8080").replace(/\/+$/, "");
+  console.log("");
+  console.log("  Sign in at " + site + "/auth");
+  for (const { email, role } of users) {
+    console.log(`    ${email}  (${role})`);
+  }
+  console.log(`    password: ${password}`);
   if (created.length > 0) {
-    console.log("");
-    console.log("  !! ------------------------------------------------------------");
-    console.log(`  !! ${created.length} account(s) created with the password: ${password}`);
-    console.log("  !! Change these before exposing this stack to anyone else.");
-    console.log("  !! ------------------------------------------------------------");
+    console.log("  Change this password before exposing the stack.");
   }
   console.log("");
-  console.log(`[seed-users] Done. Sign in at ${cfg("SITE_URL", "http://localhost:8080")}`);
+  console.log("[seed-users] Done.");
 }
 
 main().catch((err) => {

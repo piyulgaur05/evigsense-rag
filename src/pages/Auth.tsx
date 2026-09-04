@@ -145,6 +145,14 @@ const Auth = () => {
             <p className="mt-2 text-[14px] text-muted-foreground">
               Use the account your administrator set up for you.
             </p>
+            {typeof window !== "undefined" &&
+              /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname) && (
+                <p className="mt-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+                  Local seed: <span className="text-foreground">admin@jyoma.ai</span>
+                  {" / "}
+                  <span className="text-foreground">ChangeMe!2026</span>
+                </p>
+              )}
 
             <form onSubmit={handleSubmit(onSubmit)} noValidate className="mt-8">
               {formError && (

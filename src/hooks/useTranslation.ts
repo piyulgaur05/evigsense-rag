@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+
+function excelPlainText(value: ExcelJS.CellValue): string | null {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "richText" in value) {
+    return value.richText.map((part) => part.text).join("");
+  }
+  if (value && typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+  return null;
+}
 
 type LanguageDirection = "ru-en" | "en-ru";
 
@@ -56,7 +67,8 @@ export function useTranslation() {
       }
 
       const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
 
       // Collect all cells to translate
       interface CellInfo {
@@ -68,27 +80,20 @@ export function useTranslation() {
       const cellsToTranslate: CellInfo[] = [];
       const skippedCells: CellInfo[] = [];
 
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
-        
-        for (let row = range.s.r; row <= range.e.r; row++) {
-          for (let col = range.s.c; col <= range.e.c; col++) {
-            const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-            const cell = sheet[cellAddress];
-            
-            if (cell && cell.t === "s" && cell.v && typeof cell.v === "string" && cell.v.trim()) {
-              const text = cell.v;
-              
-              // Skip if text is just numbers or special characters
-              if (/^[\d\s\-\/\.\,\:\;\!\?\@\#\$\%\^\&\*\(\)\[\]\{\}\+\=\_\<\>\~\`\'\"\\|]+$/.test(text)) {
-                skippedCells.push({ sheetName, address: cellAddress, value: text });
-              } else {
-                cellsToTranslate.push({ sheetName, address: cellAddress, value: text });
-              }
+      for (const worksheet of workbook.worksheets) {
+        worksheet.eachRow((row) => {
+          row.eachCell((cell) => {
+            const text = excelPlainText(cell.value);
+            if (!text?.trim()) return;
+
+            // Skip if text is just numbers or special characters
+            if (/^[\d\s\-\/\.\,\:\;\!\?\@\#\$\%\^\&\*\(\)\[\]\{\}\+\=\_\<\>\~\`\'\"\\|]+$/.test(text)) {
+              skippedCells.push({ sheetName: worksheet.name, address: cell.address, value: text });
+            } else {
+              cellsToTranslate.push({ sheetName: worksheet.name, address: cell.address, value: text });
             }
-          }
-        }
+          });
+        });
       }
 
       const totalCells = cellsToTranslate.length + skippedCells.length;
@@ -135,27 +140,19 @@ export function useTranslation() {
       }
 
       // Apply translations to workbook
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
-        
-        for (let row = range.s.r; row <= range.e.r; row++) {
-          for (let col = range.s.c; col <= range.e.c; col++) {
-            const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-            const key = `${sheetName}:${cellAddress}`;
-            
+      for (const worksheet of workbook.worksheets) {
+        worksheet.eachRow((row) => {
+          row.eachCell((cell) => {
+            const key = `${worksheet.name}:${cell.address}`;
             if (translatedValues.has(key)) {
-              const cell = sheet[cellAddress];
-              if (cell) {
-                cell.v = translatedValues.get(key);
-              }
+              cell.value = translatedValues.get(key);
             }
-          }
-        }
+          });
+        });
       }
 
       // Generate translated file
-      const translatedBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const translatedBuffer = await workbook.xlsx.writeBuffer();
       const translatedBlob = new Blob([translatedBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });

@@ -137,6 +137,7 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-}
       # Per-role endpoint overrides; each falls back to LMSTUDIO_BASE_URL.
       TRANSLATE_BASE_URL: ${TRANSLATE_BASE_URL:-}
+      TRANSLATE_MODEL: ${TRANSLATE_MODEL:-}
       OCR_BASE_URL: ${OCR_BASE_URL:-}
       # Embeddings: Qwen3-VL-Embedding-2B on vLLM, MRL-truncated to 1024.
       EMBED_BASE_URL: ${EMBED_BASE_URL:-}

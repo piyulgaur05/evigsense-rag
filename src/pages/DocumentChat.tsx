@@ -15,7 +15,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import mammoth from "mammoth";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { normalizeMathDelimiters } from "@/lib/normalizeMath";
 
 interface Message {
@@ -27,6 +27,76 @@ interface Message {
 interface SheetData {
   name: string;
   data: string[][];
+}
+
+function excelCellToString(value: ExcelJS.CellValue): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    if ("text" in value && typeof value.text === "string") return value.text;
+    if ("richText" in value) {
+      return value.richText.map((part) => part.text).join("");
+    }
+    if ("result" in value && value.result != null) return excelCellToString(value.result);
+    if ("error" in value) return String(value.error);
+  }
+  return String(value);
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (ch !== "\r") {
+      cell += ch;
+    }
+  }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function worksheetsToSheetData(workbook: ExcelJS.Workbook): SheetData[] {
+  return workbook.worksheets.map((worksheet) => {
+    const data: string[][] = [];
+    const colCount = Math.max(worksheet.columnCount, 1);
+    worksheet.eachRow({ includeEmpty: true }, (row) => {
+      const rowData: string[] = [];
+      for (let c = 1; c <= colCount; c++) {
+        rowData.push(excelCellToString(row.getCell(c).value));
+      }
+      data.push(rowData);
+    });
+    return { name: worksheet.name, data };
+  });
 }
 
 export default function DocumentChat() {
@@ -146,18 +216,15 @@ export default function DocumentChat() {
       if (urlData?.signedUrl) {
         const response = await fetch(urlData.signedUrl);
         const arrayBuffer = await response.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: "array" });
-        
-        const sheets: SheetData[] = workbook.SheetNames.map((sheetName) => {
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1 });
-          return {
-            name: sheetName,
-            data: jsonData as string[][],
-          };
-        });
-
-        setExcelSheets(sheets);
+        const workbook = new ExcelJS.Workbook();
+        const filename = String(data.original_filename || "").toLowerCase();
+        if (filename.endsWith(".csv") || data.mime_type === "text/csv" || data.mime_type === "application/csv") {
+          const csvText = new TextDecoder().decode(arrayBuffer);
+          setExcelSheets([{ name: "Sheet1", data: parseCsv(csvText) }]);
+        } else {
+          await workbook.xlsx.load(arrayBuffer);
+          setExcelSheets(worksheetsToSheetData(workbook));
+        }
       } else if (data.content_text) {
         // Fallback to content_text
         setExcelSheets([{ name: "Content", data: [[data.content_text]] }]);
