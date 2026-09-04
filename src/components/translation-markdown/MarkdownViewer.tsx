@@ -16,16 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { parseMarkdownBlocks, MdBlock, VisualVariant } from "@/lib/markdownBlocks";
-import { MermaidDiagram, looksLikeMermaid } from "./MermaidDiagram";
-
-/** Flattens a React child tree to plain text (code blocks arrive nested). */
-function childText(node: unknown): string {
-  if (node == null || node === false) return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(childText).join("");
-  const props = (node as { props?: { children?: unknown } }).props;
-  return props ? childText(props.children) : "";
-}
+import { mermaidComponents } from "@/components/markdown/mermaidComponents";
 
 const markdownComponents: Components = {
   table: ({ node, ...props }) => (
@@ -52,18 +43,7 @@ const markdownComponents: Components = {
   },
   // OCR output carries diagrams as a raw <pre> of Mermaid source; fenced
   // ```mermaid blocks arrive here too, both as <pre><code>.
-  pre: ({ children, ...props }) => {
-    const text = childText(children);
-    if (looksLikeMermaid(text)) return <MermaidDiagram source={text} />;
-    return (
-      <pre
-        className="not-prose my-4 overflow-x-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed"
-        {...props}
-      >
-        {children}
-      </pre>
-    );
-  },
+  pre: mermaidComponents.pre,
   code: ({ className, children, ...props }) => (
     <code className={`${className ?? ""} break-words`} {...props}>
       {children}

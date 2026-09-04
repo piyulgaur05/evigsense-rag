@@ -14,6 +14,7 @@ import io
 import os
 from concurrent.futures import ThreadPoolExecutor
 
+import fitz  # PyMuPDF
 import requests
 from fastapi import FastAPI, HTTPException
 from pdf2image import convert_from_bytes
@@ -133,6 +134,117 @@ def ocr(req: OcrRequest):
         "endPage": first_page + len(pages) - 1,
         "pagesProcessed": len(pages),
     }
+
+
+class ImagesRequest(BaseModel):
+    file: str
+    # 1-based inclusive page range; omitted means the whole document.
+    startPage: int | None = None
+    endPage: int | None = None
+
+
+# Below this, an embedded image is almost always a rule, bullet, logo or
+# gradient strip rather than a figure worth storing and embedding.
+MIN_IMAGE_PX = int(os.environ.get("PDF_IMAGE_MIN_PX", "80"))
+MIN_IMAGE_AREA_FRACTION = float(os.environ.get("PDF_IMAGE_MIN_AREA_FRACTION", "0.01"))
+MAX_IMAGES_PER_PAGE = int(os.environ.get("PDF_IMAGE_MAX_PER_PAGE", "12"))
+
+
+@app.post("/images")
+def extract_images(req: ImagesRequest):
+    """
+    Extracts the raster images already embedded in a digital PDF.
+
+    This is the counterpart to /ocr for documents that have a real text layer:
+    no OCR runs, so nothing else in the pipeline would ever see their figures.
+    PyMuPDF reads the image XObjects directly, which keeps original resolution
+    and costs milliseconds per page instead of a GPU pass.
+
+    `yTopFraction` is where the image sits down the page (0 = top edge, 1 =
+    bottom). The caller uses it to splice the image into the text layer at the
+    right vertical position, so a figure lands next to its caption.
+
+    Vector artwork drawn with path operators has no XObject and is invisible
+    here; those need the rasterize-or-OCR route.
+    """
+    try:
+        raw = base64.b64decode(req.file)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"file is not valid base64: {exc}")
+
+    try:
+        doc = fitz.open(stream=raw, filetype="pdf")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not open PDF: {exc}")
+
+    with doc:
+        first_page = max(1, req.startPage or 1)
+        last_page = min(doc.page_count, req.endPage or doc.page_count)
+
+        images = []
+        skipped = 0
+
+        for page_number in range(first_page, last_page + 1):
+            page = doc.load_page(page_number - 1)
+            page_height = page.rect.height or 1
+            page_area = (page.rect.width or 1) * page_height
+            per_page = 0
+
+            # Deduplicate: the same xref can be placed several times on a page.
+            seen_xrefs: set[int] = set()
+
+            for info in page.get_images(full=True):
+                xref = info[0]
+                if xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+
+                if per_page >= MAX_IMAGES_PER_PAGE:
+                    skipped += 1
+                    continue
+
+                try:
+                    extracted = doc.extract_image(xref)
+                except Exception:
+                    skipped += 1
+                    continue
+
+                width = extracted.get("width", 0)
+                height = extracted.get("height", 0)
+                if width < MIN_IMAGE_PX or height < MIN_IMAGE_PX:
+                    skipped += 1
+                    continue
+
+                rects = page.get_image_rects(xref)
+                rect = rects[0] if rects else None
+                if rect is not None and (rect.width * rect.height) / page_area < MIN_IMAGE_AREA_FRACTION:
+                    skipped += 1
+                    continue
+
+                per_page += 1
+                images.append(
+                    {
+                        "page": page_number,
+                        "index": per_page,
+                        "width": width,
+                        "height": height,
+                        "ext": extracted.get("ext", "png"),
+                        "mime": f"image/{extracted.get('ext', 'png')}",
+                        # Top of the image as a fraction of page height. Falls
+                        # back to 1.0 (page bottom) when the placement rect is
+                        # unknown, so it sorts after the page's text.
+                        "yTopFraction": round(rect.y0 / page_height, 6) if rect is not None else 1.0,
+                        "bbox": [rect.x0, rect.y0, rect.x1, rect.y1] if rect is not None else None,
+                        "data": base64.b64encode(extracted["image"]).decode(),
+                    }
+                )
+
+        return {
+            "images": images,
+            "startPage": first_page,
+            "endPage": last_page,
+            "skipped": skipped,
+        }
 
 
 @app.get("/health")

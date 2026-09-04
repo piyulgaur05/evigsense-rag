@@ -161,6 +161,10 @@ services:
       OCR_MAX_TOKENS: ${OCR_MAX_TOKENS:-16384}
       OCR_REASONING_EFFORT: ${OCR_REASONING_EFFORT:-}
       CHANDRA_BASE_URL: ${CHANDRA_BASE_URL}
+      # Browser-facing origin. SUPABASE_URL is http://kong:8000 in here, which
+      # no browser can resolve, so image URLs written into stored Markdown must
+      # be built from this instead.
+      PUBLIC_SUPABASE_URL: ${PUBLIC_SUPABASE_URL:-http://localhost:8000}
       AUDIO_BACKEND: ${AUDIO_BACKEND}
       WHISPER_BASE_URL: ${WHISPER_BASE_URL}
       WHISPER_MODEL: ${WHISPER_MODEL}

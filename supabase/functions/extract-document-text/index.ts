@@ -5,6 +5,7 @@ import { getDocument } from 'https://esm.sh/pdfjs-serverless@0.3.2';
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ocrToPlainText, ocrPdf } from "../_shared/ocr.ts";
+import { extractAndStorePdfImages, PageImage, PageImageMap } from "../_shared/pdfImages.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,31 +60,79 @@ function pageMapFromOcrMarkdown(
   }));
 }
 
+/**
+ * Rebuilds one page's text, splicing figure Markdown in at the vertical
+ * position the figure occupies on the page.
+ *
+ * pdf.js reports each text item's position in PDF user space (origin at the
+ * bottom-left), while the relay reports a figure's top as a fraction measured
+ * down from the page top — so both are converted to the same "fraction from
+ * the top" before being interleaved. Getting this right is what keeps a figure
+ * next to its caption, and therefore in the same retrieval chunk as the words
+ * that describe it.
+ */
+function composePageText(items: any[], pageHeight: number, images: PageImage[]): string {
+  if (images.length === 0) {
+    return items.map((item: any) => item.str).join(' ');
+  }
+
+  const parts: string[] = [];
+  const pending = [...images];
+
+  for (const item of items) {
+    // transform[5] is the item's baseline y in PDF space (0 = page bottom).
+    const y = Array.isArray(item.transform) ? item.transform[5] : 0;
+    const yFromTop = pageHeight > 0 ? 1 - y / pageHeight : 1;
+
+    while (pending.length > 0 && pending[0].yTopFraction <= yFromTop) {
+      parts.push(`\n\n${pending.shift()!.markdown}\n\n`);
+    }
+    parts.push(item.str);
+    parts.push(' ');
+  }
+
+  // Anything below the last line of text, plus figures with no known placement.
+  for (const image of pending) {
+    parts.push(`\n\n${image.markdown}\n\n`);
+  }
+
+  return parts.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // Extract text from PDF using pdfjs-serverless with page numbers
-async function extractTextFromPDF(fileData: Uint8Array, startPage?: number, endPage?: number): Promise<{ text: string, pageMap: Array<{ page: number, startIndex: number, endIndex: number }>, totalPages: number }> {
+async function extractTextFromPDF(
+  fileData: Uint8Array,
+  startPage?: number,
+  endPage?: number,
+  pageImages?: PageImageMap,
+): Promise<{ text: string, pageMap: Array<{ page: number, startIndex: number, endIndex: number }>, totalPages: number }> {
   try {
     console.log('Parsing PDF with pdfjs-serverless...');
     const doc = await getDocument(fileData).promise;
     const numPages = doc.numPages;
     console.log(`PDF has ${numPages} pages`);
-    
+
     // Determine page range to process
     const startIdx = startPage || 1;
     const endIdx = endPage || numPages;
-    
+
     console.log(`Processing pages ${startIdx} to ${endIdx} of ${numPages}`);
-    
+
     const textPages = [];
     const pageMap = [];
     let currentIndex = 0;
-    
+
     for (let pageNum = startIdx; pageNum <= endIdx; pageNum++) {
       const page = await doc.getPage(pageNum);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
+      // page.view is [x0, y0, x1, y1] in PDF units.
+      const pageHeight = Array.isArray(page.view) ? page.view[3] - page.view[1] : 0;
+      const pageText = composePageText(
+        textContent.items,
+        pageHeight,
+        pageImages?.get(pageNum) ?? [],
+      );
+
       const startIndex = currentIndex;
       const endIndex = currentIndex + pageText.length;
       
@@ -327,6 +376,43 @@ serve(async (req) => {
       // Consider it scanned if less than 100 chars per page (likely just metadata)
       const isScannedPDF = !extractedText || extractedText.trim().length === 0 || textPerPage < 100;
       isScanned = isScannedPDF;
+
+      // A digital PDF never reaches OCR, so its embedded figures would be lost
+      // entirely. Pull them out of the file itself, store them, and re-compose
+      // the text with the figures in place — the offsets in pageMap have to be
+      // the ones that include the image Markdown, hence the second pass.
+      if (!isScannedPDF && !isPageCountCheck && !isProbe && documentId) {
+        try {
+          const { data: ownerRow } = await supabase
+            .from('documents')
+            .select('created_by')
+            .eq('id', documentId)
+            .single();
+
+          if (ownerRow?.created_by) {
+            const pageImages = await extractAndStorePdfImages(supabase, uint8Array, {
+              documentId,
+              ownerId: ownerRow.created_by,
+              startPage,
+              endPage,
+            });
+
+            if (pageImages.size > 0) {
+              const figureCount = [...pageImages.values()].reduce((n, list) => n + list.length, 0);
+              const withImages = await extractTextFromPDF(uint8Array, startPage, endPage, pageImages);
+              extractedText = withImages.text;
+              pageMap = withImages.pageMap;
+              console.log(`Embedded ${figureCount} figure(s) from ${pageImages.size} page(s) into the text layer`);
+            }
+          }
+        } catch (imageError) {
+          // Figures are an enrichment: never fail ingestion over them.
+          console.warn(
+            'Embedded image extraction skipped:',
+            imageError instanceof Error ? imageError.message : imageError,
+          );
+        }
+      }
 
       if (isScannedPDF && !isPageCountCheck && !skipConversion && !isProbe && documentId) {
         console.log(`Scanned PDF detected - ${extractedText.length} chars across ${pagesProcessed} pages (${textPerPage.toFixed(1)} per page)`);

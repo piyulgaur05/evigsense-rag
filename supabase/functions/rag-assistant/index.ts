@@ -15,6 +15,93 @@ const requestSchema = z.object({
   documentId: z.string().uuid("Invalid document ID").optional(),
 });
 
+interface AvailableImage {
+  url: string;
+  alt: string;
+  document: string;
+  page: number | null;
+}
+
+/**
+ * Turns the IMG:n handles the model was given back into real URLs, and repairs
+ * any URL the model typed out itself.
+ *
+ * A model asked to reproduce a URL holding two UUIDs will eventually change a
+ * character, and the result renders as a broken-image icon rather than an
+ * error — which is exactly what happened before handles were introduced. So a
+ * URL that is not one of the retrieved images is never trusted: it is matched
+ * back to a known image by alt text or by nearest string, and if nothing
+ * matches it is demoted to plain text instead of shipping a broken image.
+ */
+function resolveImageHandles(answer: string, images: AvailableImage[]): string {
+  if (!answer) return answer;
+  if (images.length === 0) {
+    // Nothing was available, so any image markdown here is invented.
+    return answer.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
+  }
+
+  const knownUrls = new Set(images.map((img) => img.url));
+  const byAlt = new Map(images.map((img) => [img.alt.trim().toLowerCase(), img.url]));
+
+  /** Character overlap, enough to pick the intended URL out of a handful. */
+  const similarity = (a: string, b: string): number => {
+    const len = Math.min(a.length, b.length);
+    let same = 0;
+    for (let i = 0; i < len; i++) if (a[i] === b[i]) same++;
+    return same / Math.max(a.length, b.length);
+  };
+
+  let repaired = 0;
+  let dropped = 0;
+
+  const result = answer.replace(
+    /!\[([^\]]*)\]\(\s*([^)\s]*)\s*\)/g,
+    (whole, alt: string, url: string) => {
+      // The intended path: a handle we handed the model.
+      const handle = url.match(/^IMG:(\d+)$/i);
+      if (handle) {
+        const image = images[parseInt(handle[1], 10) - 1];
+        if (image) return `![${alt}](${image.url})`;
+        dropped++;
+        return alt;
+      }
+
+      if (knownUrls.has(url)) return whole;
+
+      const byAltMatch = byAlt.get(alt.trim().toLowerCase());
+      if (byAltMatch) {
+        repaired++;
+        return `![${alt}](${byAltMatch})`;
+      }
+
+      // Only treat this as a mistyped link if the model was clearly aiming at
+      // our own storage. An outright invented URL elsewhere must not be
+      // silently rewritten to point at an unrelated figure.
+      const aimedAtStorage = /document-images|storage\/v1/.test(url);
+      if (aimedAtStorage && images.length === 1) {
+        repaired++;
+        return `![${alt}](${images[0].url})`;
+      }
+
+      const best = images
+        .map((img) => ({ img, score: similarity(img.url, url) }))
+        .sort((a, b) => b.score - a.score)[0];
+      if (best && best.score > 0.9) {
+        repaired++;
+        return `![${alt}](${best.img.url})`;
+      }
+
+      dropped++;
+      return alt;
+    },
+  );
+
+  if (repaired || dropped) {
+    console.log(`Image links: repaired ${repaired}, dropped ${dropped} unmatched`);
+  }
+  return result;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -284,7 +371,8 @@ serve(async (req) => {
     }
 
     // Extract every image markdown / <img> reference found in the retrieved
-    // chunks. We pass these to the model as an explicit list so it can copy
+    // chunks.
+    // (see resolveImageHandles below for how these reach the final answer) We pass these to the model as an explicit list so it can copy
     // URLs verbatim, and we use it as a fallback to auto-append images when
     // the user clearly asked about a figure but the model omitted them.
     const IMAGE_EXTRACT_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<img\s[^>]*src=["']([^"']+)["'][^>]*>/gi;
@@ -312,11 +400,15 @@ serve(async (req) => {
     }
     console.log(`Extracted ${extractedImages.length} image(s) from retrieved chunks`);
 
+    // The model is shown short IMG:n handles instead of real URLs. Asking a
+    // language model to reproduce a 100-character URL containing two UUIDs is
+    // asking for a silent single-character corruption, which renders as a
+    // broken-image icon; the substitution below is exact by construction.
     const imagesBlock = extractedImages.length > 0
       ? extractedImages
           .map((img, i) =>
             `[${i + 1}] ${img.document}${img.page ? ` (Page ${img.page})` : ""}\n` +
-            `    markdown: ![${img.alt}](${img.url})`,
+            `    markdown: ![${img.alt}](IMG:${i + 1})`,
           )
           .join("\n")
       : "(no images found in retrieved chunks)";
@@ -369,6 +461,10 @@ IMAGES — CRITICAL RULES:
 - NEVER invent, paraphrase, or shorten image URLs. Only reuse URLs from the
   "Available Images" list. If no images are listed, say so explicitly.
 
+- Image URLs are written as handles like IMG:1. Use the handle exactly as
+  shown — never expand, guess, or invent a real URL. The system replaces each
+  handle with the real address after you answer.
+
 Available Images (copy markdown verbatim):
 ${imagesBlock}
 
@@ -394,6 +490,8 @@ ${context}`
 
     // Call LM Studio for chat completion
     let answer = await chatCompletionText(messages);
+
+    answer = resolveImageHandles(answer, extractedImages);
 
     // Fallback: if the user clearly asked about a figure but the model didn't
     // embed any of the available images, append them so they always show up.

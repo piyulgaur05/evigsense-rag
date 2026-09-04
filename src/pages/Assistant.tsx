@@ -27,6 +27,7 @@ import "katex/dist/katex.min.css";
 // Normalize LaTeX delimiters the LLM sometimes emits ( \[..\], \(..\), or bare
 // [ .. ] / ( .. ) wrapping backslash-commands) into KaTeX-compatible $$/$ form.
 import { normalizeMathDelimiters } from "@/lib/normalizeMath";
+import { mermaidComponents } from "@/components/markdown/mermaidComponents";
 
 interface DocumentSource {
   document_id: string;
@@ -711,6 +712,9 @@ const Assistant = () => {
                                   <img src={src} alt={alt ?? ""} loading="lazy" />
                                 </a>
                               ),
+                              // Assistants answer flow questions with ```mermaid;
+                              // render it as a diagram instead of source.
+                              pre: mermaidComponents.pre,
                             }}
                           >
                             {normalizeMathDelimiters(message.content)}

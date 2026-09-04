@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ocrPdf, ocrImage, getOcrModelName } from "../_shared/ocr.ts";
+import { publicImageUrl } from "../_shared/pdfImages.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,11 +128,7 @@ Deno.serve(async (req) => {
             console.warn("Image upload failed", storagePath, upErr.message);
             continue;
           }
-          const { data: pub } = supabase.storage
-            .from("document-images")
-            .getPublicUrl(storagePath);
-          const publicUrl = pub?.publicUrl;
-          if (!publicUrl) continue;
+          const publicUrl = publicImageUrl("document-images", storagePath);
           processedMd = processedMd.split(imgPath).join(publicUrl);
           imageCount += 1;
         } catch (e) {
@@ -228,9 +225,7 @@ Deno.serve(async (req) => {
           console.warn("Image upload failed", storagePath, upErr.message);
           continue;
         }
-        const { data: pub } = supabase.storage.from("document-images").getPublicUrl(storagePath);
-        const publicUrl = pub?.publicUrl;
-        if (!publicUrl) continue;
+        const publicUrl = publicImageUrl("document-images", storagePath);
         mdText = mdText.split(imgPath).join(publicUrl);
         totalImages += 1;
       } catch (e) {

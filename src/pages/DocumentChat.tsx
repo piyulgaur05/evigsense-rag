@@ -17,6 +17,7 @@ import "katex/dist/katex.min.css";
 import mammoth from "mammoth";
 import ExcelJS from "exceljs";
 import { normalizeMathDelimiters } from "@/lib/normalizeMath";
+import { mermaidComponents } from "@/components/markdown/mermaidComponents";
 
 interface Message {
   role: "user" | "assistant";
@@ -463,6 +464,7 @@ export default function DocumentChat() {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeRaw, rehypeKatex]}
+                            components={{ pre: mermaidComponents.pre }}
                           >
                             {normalizeMathDelimiters(message.content)}
                           </ReactMarkdown>
