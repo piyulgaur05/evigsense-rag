@@ -13,6 +13,19 @@
 
 const IMAGES_BUCKET = "document-images";
 
+/** The slice of the Supabase client these helpers need. */
+interface StorageClient {
+  storage: {
+    from: (bucket: string) => {
+      upload: (
+        path: string,
+        body: Uint8Array,
+        opts: { contentType: string; upsert: boolean },
+      ) => Promise<{ error: { message: string } | null }>;
+    };
+  };
+}
+
 function getChandraBaseUrl(): string {
   return (Deno.env.get("CHANDRA_BASE_URL") ?? "http://host.docker.internal:8001").replace(/\/$/, "");
 }
@@ -62,6 +75,68 @@ interface RelayImage {
   data: string;
 }
 
+/**
+ * Stores the figure crops an OCR run returned and rewrites the Markdown to
+ * point at them.
+ *
+ * The relay keys each crop (`figures/p2_1.png`) and writes that key into the
+ * `<img src>` it emits, so swapping keys for URLs here is a plain string
+ * substitution. Without this the OCR path yields `<img>` tags with a src no
+ * browser can resolve.
+ */
+export async function storeOcrImages(
+  supabase: StorageClient,
+  markdown: string,
+  images: Record<string, string>,
+  opts: { documentId: string; ownerId: string },
+): Promise<{ markdown: string; imageCount: number }> {
+  const entries = Object.entries(images ?? {});
+  if (entries.length === 0) return { markdown, imageCount: 0 };
+
+  let out = markdown;
+  let imageCount = 0;
+
+  for (const [key, src] of entries) {
+    try {
+      const { bytes, contentType } = await decodeImageSource(src);
+      const safeKey = key.replace(/[^a-zA-Z0-9._/-]/g, "_").replace(/^\/+/, "");
+      const path = `${opts.ownerId}/${opts.documentId}/${safeKey}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(IMAGES_BUCKET)
+        .upload(path, bytes, { contentType, upsert: true });
+      if (upErr) {
+        console.warn("OCR figure upload failed", path, upErr.message);
+        continue;
+      }
+
+      out = out.split(key).join(publicImageUrl(IMAGES_BUCKET, path));
+      imageCount++;
+    } catch (e) {
+      console.warn("OCR figure failed:", key, e instanceof Error ? e.message : e);
+    }
+  }
+
+  return { markdown: out, imageCount };
+}
+
+/** Accepts the data: URIs the relay returns, or an http(s) URL. */
+async function decodeImageSource(
+  src: string,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  if (src.startsWith("data:")) {
+    const match = src.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) throw new Error("Invalid data URI");
+    return { bytes: base64ToUint8(match[2]), contentType: match[1] || "image/png" };
+  }
+  const res = await fetch(src);
+  if (!res.ok) throw new Error(`Failed to download image (${res.status})`);
+  return {
+    bytes: new Uint8Array(await res.arrayBuffer()),
+    contentType: res.headers.get("content-type") || "image/png",
+  };
+}
+
 /** One uploaded figure, ready to be spliced into a page's text. */
 export interface PageImage {
   page: number;
@@ -81,17 +156,7 @@ export type PageImageMap = Map<number, PageImage[]>;
  * ingesting for its text, so failures are logged and yield an empty map.
  */
 export async function extractAndStorePdfImages(
-  supabase: {
-    storage: {
-      from: (bucket: string) => {
-        upload: (
-          path: string,
-          body: Uint8Array,
-          opts: { contentType: string; upsert: boolean },
-        ) => Promise<{ error: { message: string } | null }>;
-      };
-    };
-  },
+  supabase: StorageClient,
   fileBytes: Uint8Array,
   opts: { documentId: string; ownerId: string; startPage?: number; endPage?: number },
 ): Promise<PageImageMap> {

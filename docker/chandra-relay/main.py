@@ -12,6 +12,7 @@ handwritten_ocr.py) and forwards each page image to vLLM.
 import base64
 import io
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 import fitz  # PyMuPDF
@@ -93,6 +94,116 @@ def ocr_page(img: Image.Image) -> str:
     return content.strip()
 
 
+# Labels Chandra uses for blocks that are a picture rather than text. Only
+# these get cropped: cropping a paragraph block would store a screenshot of
+# text we already hold as Markdown.
+FIGURE_LABELS = {
+    "diagram",
+    "figure",
+    "image",
+    "picture",
+    "photo",
+    "chart",
+    "graph",
+    "illustration",
+    "screenshot",
+    "drawing",
+    "flowchart",
+    "map",
+}
+
+# Chandra is prompted for "normalized 0 0 1000 1000 layout coordinates", so a
+# bbox is a fraction of the page in thousandths, not pixels.
+BBOX_SCALE = 1000.0
+MIN_CROP_PX = 48
+
+FIGURE_DIV_RE = re.compile(
+    r'<div\s[^>]*data-bbox="(?P<bbox>[^"]+)"[^>]*data-label="(?P<label>[^"]*)"[^>]*>'
+    r'(?P<inner>.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+IMG_TAG_RE = re.compile(r"<img\b(?P<attrs>[^>]*)>", re.IGNORECASE)
+SRC_ATTR_RE = re.compile(r'\bsrc\s*=\s*"[^"]*"', re.IGNORECASE)
+
+
+def parse_bbox(value: str, width: int, height: int):
+    """Normalized 'x1 y1 x2 y2' -> a pixel box inside the page raster."""
+    parts = [p for p in re.split(r"[\s,]+", value.strip()) if p]
+    if len(parts) != 4:
+        return None
+    try:
+        x1, y1, x2, y2 = (float(p) for p in parts)
+    except ValueError:
+        return None
+
+    box = (
+        int(min(x1, x2) / BBOX_SCALE * width),
+        int(min(y1, y2) / BBOX_SCALE * height),
+        int(max(x1, x2) / BBOX_SCALE * width),
+        int(max(y1, y2) / BBOX_SCALE * height),
+    )
+    left, top, right, bottom = (
+        max(0, box[0]),
+        max(0, box[1]),
+        min(width, box[2]),
+        min(height, box[3]),
+    )
+    if right - left < MIN_CROP_PX or bottom - top < MIN_CROP_PX:
+        return None
+    return left, top, right, bottom
+
+
+def crop_page_figures(page: Image.Image, markdown: str, page_number: int):
+    """
+    Cuts every figure block out of the rasterized page and points the Markdown
+    at it.
+
+    Chandra describes a figure but emits `<img>` with no src, so an OCR'd
+    document has never carried a real picture — only prose about one. Here the
+    block's own bbox is used to crop the page image we already rendered, and
+    the crop is keyed so the caller can upload it and swap in a real URL.
+    """
+    images: dict[str, str] = {}
+    width, height = page.size
+    counter = 0
+
+    def replace(match: re.Match) -> str:
+        nonlocal counter
+        label = (match.group("label") or "").strip().lower()
+        if label not in FIGURE_LABELS:
+            return match.group(0)
+
+        box = parse_bbox(match.group("bbox"), width, height)
+        if box is None:
+            return match.group(0)
+
+        counter += 1
+        key = f"figures/p{page_number}_{counter}.png"
+
+        buf = io.BytesIO()
+        page.crop(box).convert("RGB").save(buf, format="PNG")
+        images[key] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+        inner = match.group("inner")
+        if IMG_TAG_RE.search(inner):
+            # Give the existing (src-less) <img> a real source, keeping its alt.
+            def add_src(img_match: re.Match) -> str:
+                attrs = img_match.group("attrs")
+                if SRC_ATTR_RE.search(attrs):
+                    attrs = SRC_ATTR_RE.sub(f'src="{key}"', attrs, count=1)
+                else:
+                    attrs = f' src="{key}"' + attrs
+                return f"<img{attrs}>"
+
+            inner = IMG_TAG_RE.sub(add_src, inner, count=1)
+        else:
+            inner = f'<img src="{key}" alt="{label or "Figure"}"/>' + inner
+
+        return match.group(0).replace(match.group("inner"), inner, 1)
+
+    return FIGURE_DIV_RE.sub(replace, markdown), images
+
+
 @app.post("/ocr")
 def ocr(req: OcrRequest):
     raw = base64.b64decode(req.file)
@@ -119,17 +230,30 @@ def ocr(req: OcrRequest):
     with ThreadPoolExecutor(max_workers=min(OCR_CONCURRENCY, len(pages))) as pool:
         page_markdowns = list(pool.map(ocr_page, pages))
 
+    # Cut each page's figures out of the raster we already rendered, so an
+    # OCR'd document carries real pictures instead of only prose about them.
+    images: dict[str, str] = {}
+    cropped_markdowns = []
+    for offset, (page_img, md) in enumerate(zip(pages, page_markdowns)):
+        page_number = first_page + offset
+        try:
+            md, page_images = crop_page_figures(page_img, md, page_number)
+            images.update(page_images)
+        except Exception as exc:  # a bad bbox must never lose the page's text
+            print(f"figure crop failed on page {page_number}: {exc}", flush=True)
+        cropped_markdowns.append(md)
+
     if len(pages) > 1:
         results = [
             f"# Page {n}\n\n{md}"
-            for n, md in enumerate(page_markdowns, start=first_page)
+            for n, md in enumerate(cropped_markdowns, start=first_page)
         ]
     else:
-        results = page_markdowns
+        results = cropped_markdowns
 
     return {
         "markdown": "\n\n---\n\n".join(results),
-        "images": {},
+        "images": images,
         "startPage": first_page,
         "endPage": first_page + len(pages) - 1,
         "pagesProcessed": len(pages),

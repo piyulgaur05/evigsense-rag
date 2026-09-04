@@ -5,7 +5,7 @@ import { getDocument } from 'https://esm.sh/pdfjs-serverless@0.3.2';
 import JSZip from "https://esm.sh/jszip@3.10.1";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { ocrToPlainText, ocrPdf } from "../_shared/ocr.ts";
-import { extractAndStorePdfImages, PageImage, PageImageMap } from "../_shared/pdfImages.ts";
+import { extractAndStorePdfImages, storeOcrImages, PageImage, PageImageMap } from "../_shared/pdfImages.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -441,7 +441,17 @@ serve(async (req) => {
 
             if (isRangedOcr) {
               const ocrResult = await ocrPdf(uint8Array, { startPage, endPage });
-              const rangeText = ocrResult.markdown;
+              // Store the figure crops the relay cut from these pages and
+              // point the Markdown at them, so a scanned document carries its
+              // pictures and not only prose about them.
+              const rangeStored = await storeOcrImages(supabase, ocrResult.markdown, ocrResult.images, {
+                documentId,
+                ownerId: document.created_by,
+              });
+              if (rangeStored.imageCount > 0) {
+                console.log(`Stored ${rangeStored.imageCount} OCR figure(s) for pages ${startPage}-${endPage}`);
+              }
+              const rangeText = rangeStored.markdown;
               const rangePageMap = pageMapFromOcrMarkdown(rangeText, startPage);
               const chunkIndex = chunkIndexOverride ?? Math.floor((startPage - 1) / 50);
 
@@ -492,7 +502,14 @@ serve(async (req) => {
             }
 
             const ocrResult = await ocrPdf(uint8Array);
-            extractedText = ocrResult.markdown;
+            const stored = await storeOcrImages(supabase, ocrResult.markdown, ocrResult.images, {
+              documentId,
+              ownerId: document.created_by,
+            });
+            if (stored.imageCount > 0) {
+              console.log(`Stored ${stored.imageCount} OCR figure(s) for document ${documentId}`);
+            }
+            extractedText = stored.markdown;
             pageMap = pageMapFromOcrMarkdown(extractedText, 1);
             totalPages = pageMap.length;
 
