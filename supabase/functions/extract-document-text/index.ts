@@ -16,6 +16,12 @@ const requestSchema = z.union([
     documentId: z.string().uuid("Invalid document ID"),
     startPage: z.number().optional(),
     endPage: z.number().optional(),
+    // Identifies this page range's row in document_chunks. Supplied by the
+    // orchestrator (process-queue) so ranges of any size stay collision-free;
+    // the legacy fallback below assumes 50-page ranges and collides otherwise.
+    chunkIndex: z.number().optional(),
+    // Page-count/scanned probe: read page 1 to size the job, store nothing.
+    probe: z.boolean().optional(),
     skipConversionCheck: z.boolean().optional(),
   }),
   z.object({
@@ -24,9 +30,34 @@ const requestSchema = z.union([
     mimeType: z.string().optional(),
     startPage: z.number().optional(),
     endPage: z.number().optional(),
+    chunkIndex: z.number().optional(),
+    // Page-count/scanned probe: read page 1 to size the job, store nothing.
+    probe: z.boolean().optional(),
     skipConversionCheck: z.boolean().optional(),
   }),
 ]);
+
+/**
+ * Rebuilds per-page offsets from OCR markdown. The relay emits one
+ * `# Page <n>` heading per page (absolute page numbers), joined by `---`, so
+ * the headings mark where each page's text starts.
+ */
+function pageMapFromOcrMarkdown(
+  markdown: string,
+  firstPage: number,
+): Array<{ page: number, startIndex: number, endIndex: number }> {
+  const headings = [...markdown.matchAll(/^# Page (\d+)\s*$/gm)];
+
+  if (headings.length === 0) {
+    return [{ page: firstPage, startIndex: 0, endIndex: markdown.length }];
+  }
+
+  return headings.map((match, i) => ({
+    page: parseInt(match[1], 10),
+    startIndex: match.index ?? 0,
+    endIndex: i + 1 < headings.length ? (headings[i + 1].index ?? markdown.length) : markdown.length,
+  }));
+}
 
 // Extract text from PDF using pdfjs-serverless with page numbers
 async function extractTextFromPDF(fileData: Uint8Array, startPage?: number, endPage?: number): Promise<{ text: string, pageMap: Array<{ page: number, startIndex: number, endIndex: number }>, totalPages: number }> {
@@ -215,6 +246,8 @@ serve(async (req) => {
     let documentId: string | undefined;
     const startPage = 'startPage' in requestData ? requestData.startPage : undefined;
     const endPage = 'endPage' in requestData ? requestData.endPage : undefined;
+    const chunkIndexOverride = 'chunkIndex' in requestData ? requestData.chunkIndex : undefined;
+    const isProbe = 'probe' in requestData && requestData.probe === true;
 
     // Check if this is a document extraction or direct file extraction
     if ('documentId' in requestData) {
@@ -266,6 +299,9 @@ serve(async (req) => {
     let extractedText = '';
     let pageMap: Array<{ page: number, startIndex: number, endIndex: number }> = [];
     let totalPages = 1; // Default for non-PDF files
+    // Reported back so the orchestrator can size its page ranges: OCR is far
+    // slower per page than reading an embedded text layer.
+    let isScanned = false;
 
     // Extract text based on mime type
     if (mimeType === 'application/pdf') {
@@ -275,27 +311,12 @@ serve(async (req) => {
       pageMap = result.pageMap;
       totalPages = result.totalPages; // Store total pages from PDF extraction
       
-      // For chunked extraction, we need to merge with existing data carefully
-      if (documentId && startPage && endPage) {
-        const { data: existingDoc } = await supabase
-          .from('documents')
-          .select('content_text, page_map')
-          .eq('id', documentId)
-          .single();
-        
-        // Don't append during parallel processing - each chunk will be stored separately
-        // The final merge will happen after all chunks complete
-        if (existingDoc?.content_text && !existingDoc.content_text.includes('Processing large document:')) {
-          // Only merge if not in processing state
-          extractedText = existingDoc.content_text + '\n\n' + extractedText;
-          
-          // Merge page maps, avoiding duplicates
-          const existingPageNums = new Set((existingDoc.page_map || []).map((p: any) => p.page));
-          const newPageMap = pageMap.filter(p => !existingPageNums.has(p.page));
-          pageMap = [...(existingDoc.page_map || []), ...newPageMap];
-        }
-      }
-      
+      // A ranged extraction holds only its own pages: it is stored as one row
+      // in document_chunks and merge-document-chunks assembles the document at
+      // the end. Folding documents.content_text in here instead baked whatever
+      // it held — including the orchestrator's progress placeholder — into the
+      // chunk's stored text.
+
       // If no text was extracted (scanned PDF), trigger conversion to searchable PDF
       // Only skip conversion during initial page count check (1 page only) or if explicitly told to skip
       const isPageCountCheck = startPage === 1 && endPage === 1;
@@ -305,8 +326,9 @@ serve(async (req) => {
       
       // Consider it scanned if less than 100 chars per page (likely just metadata)
       const isScannedPDF = !extractedText || extractedText.trim().length === 0 || textPerPage < 100;
-      
-      if (isScannedPDF && !isPageCountCheck && !skipConversion && documentId) {
+      isScanned = isScannedPDF;
+
+      if (isScannedPDF && !isPageCountCheck && !skipConversion && !isProbe && documentId) {
         console.log(`Scanned PDF detected - ${extractedText.length} chars across ${pagesProcessed} pages (${textPerPage.toFixed(1)} per page)`);
 
         const { data: document } = await supabase
@@ -326,10 +348,67 @@ serve(async (req) => {
           });
 
           try {
+            // A page range means the orchestrator is walking a large scan in
+            // bounded pieces: OCR only those pages and store them as one chunk,
+            // leaving the other ranges (and the merge at the end) alone.
+            const isRangedOcr = !!(startPage && endPage);
+
+            if (isRangedOcr) {
+              const ocrResult = await ocrPdf(uint8Array, { startPage, endPage });
+              const rangeText = ocrResult.markdown;
+              const rangePageMap = pageMapFromOcrMarkdown(rangeText, startPage);
+              const chunkIndex = chunkIndexOverride ?? Math.floor((startPage - 1) / 50);
+
+              console.log(
+                `[CHUNKED OCR] Pages ${startPage}-${endPage} -> chunk ${chunkIndex}, ${rangeText.length} chars`,
+              );
+
+              const { error: chunkError } = await supabase
+                .from('document_chunks')
+                .upsert({
+                  document_id: documentId,
+                  chunk_index: chunkIndex,
+                  start_page: startPage,
+                  end_page: endPage,
+                  content_text: rangeText,
+                  page_map: rangePageMap,
+                }, {
+                  onConflict: 'document_id,chunk_index',
+                });
+
+              if (chunkError) {
+                throw new Error(`Failed to store OCR chunk: ${chunkError.message}`);
+              }
+
+              await supabase
+                .from('pdf_conversions')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('original_file_path', document.storage_path)
+                .eq('status', 'processing');
+
+              return new Response(
+                JSON.stringify({
+                  success: true,
+                  textLength: rangeText.length,
+                  pageMap: rangePageMap,
+                  startPage,
+                  endPage,
+                  converted: true,
+                  chunked: true,
+                  useMarkdown: true,
+                  message: `Scanned PDF OCR completed for pages ${startPage}-${endPage}`,
+                }),
+                {
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                  status: 200,
+                },
+              );
+            }
+
             const ocrResult = await ocrPdf(uint8Array);
             extractedText = ocrResult.markdown;
-            pageMap = [{ page: 1, startIndex: 0, endIndex: extractedText.length }];
-            totalPages = 1;
+            pageMap = pageMapFromOcrMarkdown(extractedText, 1);
+            totalPages = pageMap.length;
 
             console.log(`Successfully extracted ${extractedText.length} characters from scanned PDF via Chandra OCR`);
 
@@ -411,11 +490,13 @@ serve(async (req) => {
     console.log(`Extracted ${extractedText.length} characters of text from ${pageMap.length} pages`);
 
     // Update document with extracted text and page map (only if documentId provided)
-    if (documentId) {
+    if (documentId && !isProbe) {
       // If this is chunked processing, store in document_chunks table
       if (startPage && endPage) {
         console.log(`[CHUNKED] Storing chunk result for pages ${startPage}-${endPage}, text length: ${extractedText.length}`);
-        const chunkIndex = Math.floor((startPage - 1) / 50); // Assuming 50 pages per chunk
+        // Prefer the orchestrator's index; the /50 fallback only holds for
+        // 50-page ranges and collides on anything narrower.
+        const chunkIndex = chunkIndexOverride ?? Math.floor((startPage - 1) / 50);
         
         console.log(`[CHUNKED] Upserting chunk ${chunkIndex} to document_chunks table`);
         const { data: upsertData, error: chunkError } = await supabase
@@ -473,7 +554,8 @@ serve(async (req) => {
         pageMap: pageMap,
         textLength: extractedText.length,
         totalPages: totalPages,
-        message: 'Text extracted successfully' 
+        isScanned,
+        message: 'Text extracted successfully'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -55,19 +55,45 @@ serve(async (req) => {
 
     console.log('[QUEUE] Starting queue processor...');
 
-    // Get next pending item from queue
-    const { data: queueItem, error: queueError } = await supabase
+    // A large scan is processed one page range per invocation so no single call
+    // outlives the edge runtime's wall-clock limit. Such an item stays in
+    // 'processing' between ranges, carrying its progress in metadata, so
+    // in-flight work is resumed before a new document is started.
+    const { data: resumeItem, error: resumeError } = await supabase
       .from('document_processing_queue')
       .select('*, documents(*)')
-      .eq('status', 'pending')
-      .order('priority', { ascending: false })
-      .order('created_at', { ascending: true })
+      .eq('status', 'processing')
+      .eq('metadata->>phase', 'extracting')
+      .order('updated_at', { ascending: true })
       .limit(1)
       .maybeSingle();
 
-    if (queueError) {
-      console.error('[QUEUE] Error fetching queue:', queueError);
-      throw queueError;
+    if (resumeError) {
+      console.error('[QUEUE] Error fetching resumable items:', resumeError);
+      throw resumeError;
+    }
+
+    let queueItem = resumeItem;
+
+    if (queueItem) {
+      console.log(`[QUEUE] Resuming in-flight document ${queueItem.document_id}`);
+    } else {
+      // Get next pending item from queue
+      const { data: pendingItem, error: queueError } = await supabase
+        .from('document_processing_queue')
+        .select('*, documents(*)')
+        .eq('status', 'pending')
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (queueError) {
+        console.error('[QUEUE] Error fetching queue:', queueError);
+        throw queueError;
+      }
+
+      queueItem = pendingItem;
     }
 
     if (!queueItem) {
@@ -129,73 +155,163 @@ serve(async (req) => {
       
       const fileSize = fileList?.[0]?.metadata?.size || 0;
       const fileSizeMB = fileSize / (1024 * 1024);
-      
+
       console.log(`[QUEUE] Document size: ${fileSizeMB.toFixed(2)}MB`);
 
-      // For large files (>1MB), extract in chunks to avoid timeout
-      if (fileSizeMB > 1) {
-        console.log('[QUEUE] Large document detected, extracting in chunks');
-        
-        // Get total pages first
-        const { data: initialExtract, error: initialError } = await supabase.functions.invoke(
-          'extract-document-text',
-          { 
-            body: { 
-              documentId: queueItem.document_id,
-              startPage: 1,
-              endPage: 1
-            },
-            headers: { Authorization: `Bearer ${serviceRoleKey}`, 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' }
-          }
-        );
+      // Reading an embedded text layer is fast, so digital PDFs can take wide
+      // ranges. OCR runs a vision model per page (tens of seconds even
+      // parallelised), so a scanned PDF needs narrow ranges to keep each
+      // extract-document-text call inside the edge runtime's ~400s wall-clock
+      // limit — that limit is what silently killed large scans before.
+      const TEXT_CHUNK_SIZE = 100;
+      const OCR_CHUNK_SIZE = 5;
 
-        if (initialError || !initialExtract?.totalPages) {
-          throw new Error('Failed to determine document size');
+      const progress = (queueItem.metadata ?? {}) as Record<string, unknown>;
+      const isResuming = progress.phase === 'extracting';
+
+      let totalPages = 0;
+      let isScanned = false;
+      let CHUNK_SIZE = TEXT_CHUNK_SIZE;
+      let numChunks = 0;
+      let nextChunk = 0;
+      let needsChunking = false;
+
+      if (isResuming) {
+        // Sizing was settled on the first invocation; picking up where it left off.
+        totalPages = Number(progress.totalPages) || 0;
+        isScanned = progress.isScanned === true;
+        CHUNK_SIZE = Number(progress.chunkSize) || TEXT_CHUNK_SIZE;
+        numChunks = Number(progress.numChunks) || 0;
+        nextChunk = Number(progress.nextChunk) || 0;
+        needsChunking = true;
+      } else {
+        const isPdf = (document.mime_type || '') === 'application/pdf';
+
+        if (isPdf) {
+          // Probe page 1 to size the job. Stores nothing; OCR is not run.
+          const { data: probe, error: probeError } = await supabase.functions.invoke(
+            'extract-document-text',
+            {
+              body: {
+                documentId: queueItem.document_id,
+                startPage: 1,
+                endPage: 1,
+                probe: true,
+              },
+              headers: { Authorization: `Bearer ${serviceRoleKey}`, 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' }
+            }
+          );
+
+          if (probeError || !probe?.totalPages) {
+            throw new Error('Failed to determine document size');
+          }
+
+          totalPages = probe.totalPages;
+          isScanned = probe.isScanned === true;
+          console.log(`[QUEUE] PDF has ${totalPages} pages, scanned=${isScanned}`);
         }
 
-        const totalPages = initialExtract.totalPages;
-        const CHUNK_SIZE = 100;
-        const numChunks = Math.ceil(totalPages / CHUNK_SIZE);
-        
-        console.log(`[QUEUE] Document has ${totalPages} pages, processing in ${numChunks} chunks`);
+        CHUNK_SIZE = isScanned ? OCR_CHUNK_SIZE : TEXT_CHUNK_SIZE;
+        // A scanned PDF is chunked on page count alone — a 40-page scan can sit
+        // well under 1MB and still take far longer than the wall-clock limit.
+        needsChunking = isPdf && totalPages > CHUNK_SIZE && (isScanned || fileSizeMB > 1);
+        numChunks = needsChunking ? Math.ceil(totalPages / CHUNK_SIZE) : 0;
+        // A retried item keeps its progress, so a failure near the end does not
+        // start the walk over from page 1.
+        nextChunk = Number(progress.chunkSize) === CHUNK_SIZE ? Number(progress.nextChunk) || 0 : 0;
+      }
 
-        // Process chunks sequentially to avoid timeout
-        for (let i = 0; i < numChunks; i++) {
-          const startPage = i * CHUNK_SIZE + 1;
-          const endPage = Math.min((i + 1) * CHUNK_SIZE, totalPages);
-          
-          console.log(`[QUEUE] Processing chunk ${i + 1}/${numChunks}: pages ${startPage}-${endPage}`);
-          
+      if (needsChunking) {
+        const i = nextChunk;
+        const startPage = i * CHUNK_SIZE + 1;
+        const endPage = Math.min((i + 1) * CHUNK_SIZE, totalPages);
+
+        console.log(`[QUEUE] Processing chunk ${i + 1}/${numChunks}: pages ${startPage}-${endPage}`);
+
+        // Extraction is idempotent per range, so a retry (or an overlapping
+        // invocation) costs a lookup rather than a repeated OCR run.
+        const { data: existingChunk } = await supabase
+          .from('document_chunks')
+          .select('id')
+          .eq('document_id', queueItem.document_id)
+          .eq('chunk_index', i)
+          .maybeSingle();
+
+        let wholeDocumentConverted = false;
+
+        if (existingChunk) {
+          console.log(`[QUEUE] Chunk ${i} already extracted, skipping`);
+        } else {
           const { data: extractResult, error: chunkError } = await supabase.functions.invoke(
             'extract-document-text',
             {
-              body: { 
+              body: {
                 documentId: queueItem.document_id,
                 startPage,
-                endPage
+                endPage,
+                chunkIndex: i
               },
               headers: { Authorization: `Bearer ${serviceRoleKey}`, 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' }
             }
           );
 
           if (chunkError) throw chunkError;
-          
-          // Check if the document was already converted (has 'converted' flag)
-          if (extractResult?.converted) {
-            console.log('[QUEUE] Document was converted, text extracted, and PDF replaced - generating embeddings');
-            // Text is already extracted and stored, PDF file has been replaced with searchable version
-            // Skip the progress update and continue to embeddings
-            break; // Exit the chunk loop
-          }
-          
-          // Update progress for chunked processing (only if not converted)
+
+          // A ranged result covers only its own pages. Only a whole-document
+          // conversion means there is nothing further to extract.
+          wholeDocumentConverted = !!(extractResult?.converted && !extractResult?.chunked);
+        }
+
+        const isLastChunk = i + 1 >= numChunks;
+
+        if (!wholeDocumentConverted && !isLastChunk) {
+          // Hand the next range to a fresh invocation with its own time budget.
+          await supabase
+            .from('document_processing_queue')
+            .update({
+              status: 'processing',
+              metadata: {
+                ...progress,
+                phase: 'extracting',
+                totalPages,
+                isScanned,
+                chunkSize: CHUNK_SIZE,
+                numChunks,
+                nextChunk: i + 1,
+              },
+            })
+            .eq('id', queueItem.id);
+
           await supabase
             .from('documents')
-            .update({ 
+            .update({
               content_text: `Extracting text: ${i + 1}/${numChunks} chunks completed`
             })
             .eq('id', queueItem.document_id);
+
+          const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET');
+          supabase.functions.invoke('process-queue', {
+            headers: { 'x-internal-secret': internalSecret || '' }
+          });
+
+          console.log(`[QUEUE] Chunk ${i + 1}/${numChunks} done, handing off to next invocation`);
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              documentId: queueItem.document_id,
+              message: `Extracted pages ${startPage}-${endPage} (${i + 1}/${numChunks}), continuing`
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
+
+        // Extraction is done — drop the resume marker so this item is not
+        // picked up again while the remaining phases run.
+        await supabase
+          .from('document_processing_queue')
+          .update({ metadata: { ...progress, phase: 'finalizing', nextChunk: numChunks } })
+          .eq('id', queueItem.id);
 
         console.log('[QUEUE] Text extraction completed, generating embeddings in parallel');
 
@@ -209,6 +325,22 @@ serve(async (req) => {
         );
 
         if (embeddingError) throw embeddingError;
+
+        // Merge the per-range chunks into documents.content_text. Must run
+        // after embeddings, which read document_chunks — the merge deletes them.
+        // Without this the document is left showing the progress placeholder.
+        const { error: mergeError } = await supabase.functions.invoke(
+          'merge-document-chunks',
+          {
+            body: { documentId: queueItem.document_id, totalPages },
+            headers: { Authorization: `Bearer ${serviceRoleKey}`, 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' }
+          }
+        );
+
+        if (mergeError) {
+          // Embeddings already exist, so the document is searchable either way.
+          console.error('[QUEUE] Chunk merge failed, document text may be incomplete:', mergeError);
+        }
 
       } else {
         // Standard processing for small files

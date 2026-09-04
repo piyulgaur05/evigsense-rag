@@ -11,6 +11,12 @@ export interface OcrResult {
   images: Record<string, string>;
 }
 
+/** 1-based inclusive page range of a PDF to OCR. */
+export interface OcrPageRange {
+  startPage: number;
+  endPage: number;
+}
+
 const OCR_SYSTEM_PROMPT = `You are a document OCR engine. Extract all text from the provided document image or PDF page as faithful Markdown.
 Rules:
 - Preserve headings, lists, tables (as Markdown tables), and layout structure
@@ -88,7 +94,11 @@ async function ocrViaLmStudio(bytes: Uint8Array, mimeType: string): Promise<OcrR
   return { markdown: markdown.trim(), images: {} };
 }
 
-async function ocrViaChandraNative(bytes: Uint8Array, mimeType: string): Promise<OcrResult> {
+async function ocrViaChandraNative(
+  bytes: Uint8Array,
+  mimeType: string,
+  range?: OcrPageRange,
+): Promise<OcrResult> {
   const base64 = uint8ToBase64(bytes);
   const isPdf = mimeType.includes("pdf");
 
@@ -99,6 +109,11 @@ async function ocrViaChandraNative(bytes: Uint8Array, mimeType: string): Promise
       file: base64,
       fileType: isPdf ? 0 : 1,
       mime_type: mimeType,
+      // Only the chandra-native backend can OCR a slice of a PDF. Sending one
+      // bounded range per call is what keeps a large scan under the caller's
+      // execution time limit.
+      startPage: isPdf ? range?.startPage : undefined,
+      endPage: isPdf ? range?.endPage : undefined,
     }),
   });
 
@@ -130,10 +145,14 @@ async function ocrViaChandraNative(bytes: Uint8Array, mimeType: string): Promise
   throw new Error("Chandra OCR returned empty result");
 }
 
-async function runOcr(bytes: Uint8Array, mimeType: string): Promise<OcrResult> {
+async function runOcr(
+  bytes: Uint8Array,
+  mimeType: string,
+  range?: OcrPageRange,
+): Promise<OcrResult> {
   const backend = getOcrBackend();
   if (backend === "chandra-native" || backend === "chandra") {
-    return ocrViaChandraNative(bytes, mimeType);
+    return ocrViaChandraNative(bytes, mimeType, range);
   }
   return ocrViaLmStudio(bytes, mimeType);
 }
@@ -143,9 +162,15 @@ export async function ocrImage(bytes: Uint8Array, mimeType = "image/png"): Promi
   return runOcr(bytes, mimeType);
 }
 
-/** OCR a PDF (entire document sent to the configured backend). */
-export async function ocrPdf(bytes: Uint8Array): Promise<OcrResult> {
-  return runOcr(bytes, "application/pdf");
+/**
+ * OCR a PDF. With no range the whole document is sent; with one, only those
+ * pages are rasterized and read, so a large scan can be processed across
+ * several bounded calls instead of one that outlives its execution limit.
+ * The range is honoured by the chandra-native backend only — the lmstudio
+ * (VLM-over-chat-completions) backend always receives the whole file.
+ */
+export async function ocrPdf(bytes: Uint8Array, range?: OcrPageRange): Promise<OcrResult> {
+  return runOcr(bytes, "application/pdf", range);
 }
 
 /** Plain text extraction helper for RAG pipeline (no image sidecar). */

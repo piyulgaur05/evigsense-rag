@@ -48,6 +48,11 @@ class OcrRequest(BaseModel):
     file: str
     fileType: int  # 0 = pdf, 1 = image
     mime_type: str | None = None
+    # 1-based inclusive page range. Callers processing a large PDF send one
+    # bounded range per request so each call stays under the caller's own
+    # execution limit; omitted means "the whole document" (capped at MAX_PAGES).
+    startPage: int | None = None
+    endPage: int | None = None
 
 
 def image_to_data_uri(img: Image.Image) -> str:
@@ -91,25 +96,43 @@ def ocr_page(img: Image.Image) -> str:
 def ocr(req: OcrRequest):
     raw = base64.b64decode(req.file)
 
+    # Absolute page number of the first rasterized page, so multi-request runs
+    # over one document still label pages by their real position in the file.
+    first_page = req.startPage if req.fileType == 0 and req.startPage else 1
+
     if req.fileType == 0:
-        pages = convert_from_bytes(raw, dpi=DPI)
+        last_page = req.endPage
+        if last_page is None:
+            last_page = first_page + MAX_PAGES - 1
+        else:
+            # Never rasterize more than MAX_PAGES in a single request, however
+            # wide a range the caller asked for.
+            last_page = min(last_page, first_page + MAX_PAGES - 1)
+        pages = convert_from_bytes(raw, dpi=DPI, first_page=first_page, last_page=last_page)
     else:
         pages = [Image.open(io.BytesIO(raw))]
 
     if not pages:
         raise HTTPException(status_code=422, detail="No pages found in document")
 
-    pages = pages[:MAX_PAGES]
-
     with ThreadPoolExecutor(max_workers=min(OCR_CONCURRENCY, len(pages))) as pool:
         page_markdowns = list(pool.map(ocr_page, pages))
 
     if len(pages) > 1:
-        results = [f"# Page {i}\n\n{md}" for i, md in enumerate(page_markdowns, start=1)]
+        results = [
+            f"# Page {n}\n\n{md}"
+            for n, md in enumerate(page_markdowns, start=first_page)
+        ]
     else:
         results = page_markdowns
 
-    return {"markdown": "\n\n---\n\n".join(results), "images": {}}
+    return {
+        "markdown": "\n\n---\n\n".join(results),
+        "images": {},
+        "startPage": first_page,
+        "endPage": first_page + len(pages) - 1,
+        "pagesProcessed": len(pages),
+    }
 
 
 @app.get("/health")
