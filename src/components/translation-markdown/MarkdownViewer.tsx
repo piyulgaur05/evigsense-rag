@@ -1,7 +1,7 @@
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ImageIcon,
   BarChart3,
@@ -16,6 +16,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { parseMarkdownBlocks, MdBlock, VisualVariant } from "@/lib/markdownBlocks";
+import { MermaidDiagram, looksLikeMermaid } from "./MermaidDiagram";
+
+/** Flattens a React child tree to plain text (code blocks arrive nested). */
+function childText(node: unknown): string {
+  if (node == null || node === false) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(childText).join("");
+  const props = (node as { props?: { children?: unknown } }).props;
+  return props ? childText(props.children) : "";
+}
 
 const markdownComponents: Components = {
   table: ({ node, ...props }) => (
@@ -37,23 +47,68 @@ const markdownComponents: Components = {
   ),
   img: ({ alt, src }) => {
     const isPlaceholder = !src || src === "image-placeholder" || src.includes("image-placeholder");
-    if (isPlaceholder) {
-      return (
-        <span className="not-prose my-4 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-10 text-center">
-          <ImageIcon className="h-10 w-10 text-muted-foreground/70" />
-          <span className="text-sm font-medium text-foreground">{alt || "Figure"}</span>
-          <span className="text-xs text-muted-foreground">Image from original document</span>
-        </span>
-      );
-    }
+    if (isPlaceholder) return <ImagePlaceholder alt={alt} />;
     return <img src={src} alt={alt ?? ""} className="rounded-md mx-auto my-4 max-w-full h-auto" />;
   },
+  // OCR output carries diagrams as a raw <pre> of Mermaid source; fenced
+  // ```mermaid blocks arrive here too, both as <pre><code>.
+  pre: ({ children, ...props }) => {
+    const text = childText(children);
+    if (looksLikeMermaid(text)) return <MermaidDiagram source={text} />;
+    return (
+      <pre
+        className="not-prose my-4 overflow-x-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed"
+        {...props}
+      >
+        {children}
+      </pre>
+    );
+  },
   code: ({ className, children, ...props }) => (
-    <code className={className} {...props}>
+    <code className={`${className ?? ""} break-words`} {...props}>
       {children}
     </code>
   ),
 };
+
+const ALT_PREVIEW_CHARS = 220;
+
+/**
+ * OCR puts the model's whole description of a figure into the img alt, which
+ * can run to a paragraph. Show a short preview and let the reader expand,
+ * so the description never dominates the page.
+ */
+function ImagePlaceholder({ alt }: { alt?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = (alt ?? "").trim();
+  const isLong = text.length > ALT_PREVIEW_CHARS;
+  const shown = !isLong || expanded ? text : `${text.slice(0, ALT_PREVIEW_CHARS).trimEnd()}…`;
+
+  return (
+    <span className="not-prose my-4 flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-4">
+      <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+        <ImageIcon className="h-3.5 w-3.5" />
+        Image from original document
+      </span>
+      {text ? (
+        <>
+          <span className="text-sm font-normal leading-relaxed text-foreground/85">{shown}</span>
+          {isLong && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="self-start text-xs text-primary hover:underline"
+            >
+              {expanded ? "Show less" : "Show full description"}
+            </button>
+          )}
+        </>
+      ) : (
+        <span className="text-sm italic text-muted-foreground">Figure</span>
+      )}
+    </span>
+  );
+}
 
 const VISUAL_META: Record<VisualVariant, { icon: LucideIcon; label: string }> = {
   image: { icon: ImageIcon, label: "Image description" },

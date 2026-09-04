@@ -22,6 +22,30 @@ interface CollaboraEditorProps {
  *                           must be container-reachable (kong:8000), not localhost
  *  - WOPISrc                an opaque string the browser only passes through
  */
+/**
+ * supabase-js collapses any non-2xx edge response into the useless
+ * "Edge Function returned a non-2xx status code". The real cause is in the
+ * response body, which is still readable through `error.context`.
+ */
+async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const res = (error as { context?: Response })?.context;
+  if (res && typeof res.clone === "function") {
+    try {
+      const body = await res.clone().json();
+      const detail = body?.details ?? body?.error;
+      if (detail) return String(detail);
+    } catch {
+      try {
+        const text = (await res.clone().text()).trim();
+        if (text) return text.slice(0, 500);
+      } catch {
+        /* body already consumed */
+      }
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function CollaboraEditor({ documentId, seedHtml, onReady }: CollaboraEditorProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string>("");
@@ -43,30 +67,26 @@ export function CollaboraEditor({ documentId, seedHtml, onReady }: CollaboraEdit
       const { data: seeded, error: seedErr } = await supabase.functions.invoke("wopi-host", {
         body: { mode: "seed", documentId, html: seedHtml },
       });
-      if (seedErr) throw new Error(seedErr.message || "Failed to prepare document");
+      if (seedErr) throw new Error(await edgeErrorMessage(seedErr, "Failed to prepare document"));
       if (seeded?.error) throw new Error(seeded.details || seeded.error);
 
       // 2. Mint a scoped, short-lived WOPI token for this document.
       const { data: minted, error: mintErr } = await supabase.functions.invoke("wopi-host", {
         body: { mode: "mint", documentId },
       });
-      if (mintErr) throw new Error(mintErr.message || "Failed to authorize editor");
+      if (mintErr) throw new Error(await edgeErrorMessage(mintErr, "Failed to authorize editor"));
       if (minted?.error) throw new Error(minted.details || minted.error);
 
-      // 3. Ask Collabora which URL serves the Writer editor.
-      const discoveryRes = await fetch(`${collaboraUrl}/hosting/discovery`);
-      if (!discoveryRes.ok) {
-        throw new Error(
-          `Collabora is not reachable at ${collaboraUrl} (${discoveryRes.status}). ` +
-            `Start it with: docker compose up -d collabora`,
-        );
-      }
-      const xml = new DOMParser().parseFromString(await discoveryRes.text(), "text/xml");
-      const action =
-        xml.querySelector('app[name*="wordprocessing"] action[ext="docx"]') ??
-        xml.querySelector('action[ext="docx"]');
-      const urlsrc = action?.getAttribute("urlsrc");
-      if (!urlsrc) throw new Error("Collabora discovery did not advertise a .docx editor");
+      // 3. Ask Collabora which URL serves the Writer editor. This goes through
+      //    the edge function: Collabora serves /hosting/discovery without CORS
+      //    headers, so a direct browser fetch fails with "Failed to fetch".
+      const { data: discovery, error: discErr } = await supabase.functions.invoke("wopi-host", {
+        body: { mode: "discover", documentId },
+      });
+      if (discErr) throw new Error(await edgeErrorMessage(discErr, "Collabora is not reachable"));
+      if (discovery?.error) throw new Error(discovery.details || discovery.error);
+      // Re-base the advertised path onto the browser-facing Collabora URL.
+      const urlsrc = `${collaboraUrl}${discovery.urlsrcPath}`;
 
       const wopiSrc = `${wopiHostBase}/functions/v1/wopi-host/files/${documentId}`;
       const separator = urlsrc.includes("?") ? "" : "?";

@@ -256,16 +256,28 @@ services:
       username: ${COLLABORA_ADMIN_USER:-admin}
       password: ${COLLABORA_ADMIN_PASSWORD:-admin}
       DONT_GEN_SSL_CERT: "true"
+      # ssl.termination must stay false: there is no TLS-terminating proxy in
+      # front of us, and with it true /hosting/discovery advertises https://
+      # URLs the browser cannot load against a plain-HTTP server.
+      #
+      # net.post_allow.host gates /cool/convert-to. It is matched against the
+      # CALLER's IP, so it must cover every private range Docker may hand the
+      # compose network (default bridge pools are 172.16/12 and 192.168/16;
+      # user-defined pools can be 10/8), plus loopback for host-side curl.
+      # A subnet missing here surfaces as "convert-to failed (403)".
+      #
+      # A `#` inside a YAML folded scalar is NOT a comment — it would be passed
+      # to coolwsd as an argument. Keep comments outside this block.
       extra_params: >-
         --o:ssl.enable=false
-        # No TLS-terminating proxy in front of us, so this must be false —
-        # with it true, /hosting/discovery advertises https:// URLs that the
-        # browser cannot load against a plain-HTTP server.
         --o:ssl.termination=false
         --o:home_mode.enable=true
         --o:net.frame_ancestors=${COLLABORA_FRAME_ANCESTORS:-http://localhost:8080}
-        --o:net.post_allow.host[0]=172\.[0-9]+\.[0-9]+\.[0-9]+
-        --o:net.post_allow.host[1]=127\.0\.0\.1
+        --o:net.post_allow.host[0]=(::ffff:)?172\.[0-9]+\.[0-9]+\.[0-9]+
+        --o:net.post_allow.host[1]=(::ffff:)?127\.0\.0\.1
+        --o:net.post_allow.host[2]=(::ffff:)?192\.168\.[0-9]+\.[0-9]+
+        --o:net.post_allow.host[3]=(::ffff:)?10\.[0-9]+\.[0-9]+\.[0-9]+
+        --o:net.post_allow.host[4]=::1
     cap_add: [MKNOD, CHOWN, FOWNER, SYS_CHROOT]
     security_opt: ["seccomp:unconfined"]
     mem_limit: 2g

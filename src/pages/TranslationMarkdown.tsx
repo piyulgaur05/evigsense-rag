@@ -250,7 +250,13 @@ export default function TranslationMarkdown() {
     try {
       // Only needed for the first open; the seed route ignores it once a
       // .docx exists, so edits are never clobbered.
-      setEditorHtml(docxPath ? "" : await buildHtml());
+      if (docxPath) {
+        setEditorHtml("");
+      } else {
+        const html = (await buildHtml()).trim();
+        if (!html) throw new Error("The translation rendered as empty HTML");
+        setEditorHtml(html);
+      }
       setEditorOpen(true);
     } catch (e: unknown) {
       toast.error("Could not prepare document: " + (e instanceof Error ? e.message : "Unknown error"));
@@ -377,7 +383,7 @@ export default function TranslationMarkdown() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-6 space-y-4 w-full h-[calc(100vh-4rem)] flex flex-col">
+      <div className="p-3 md:p-4 space-y-3 w-full h-[calc(100vh-4rem)] flex flex-col">
         <div className="flex items-center gap-3">
           <Languages className="h-6 w-6 text-primary" />
           <div>
@@ -530,7 +536,7 @@ export default function TranslationMarkdown() {
         </Card>
 
         {/* Viewer */}
-        <Card className="p-4 flex-1 min-h-0 flex flex-col">
+        <Card className="p-3 md:p-4 flex-1 min-h-0 flex flex-col">
           <Tabs value={tab} onValueChange={setTab} className="w-full flex-1 min-h-0 flex flex-col">
             <TabsList>
               <TabsTrigger value="original">
@@ -542,7 +548,7 @@ export default function TranslationMarkdown() {
               </TabsTrigger>
             </TabsList>
 
-            <div className="mt-4 flex-1 min-h-0">
+            <div className="mt-3 flex-1 min-h-0">
               <TabsContent value="original" className="h-full m-0">
                 {!selectedDoc ? (
                   <EmptyState text="Select a document to begin." />
@@ -561,8 +567,8 @@ export default function TranslationMarkdown() {
                 {ocrStatus === "running" ? (
                   <LoadingState text={ocrProgress || "Generating OCR Markdown…"} />
                 ) : ocrMd ? (
-                  <div className="h-full overflow-auto border rounded-lg bg-card p-6 md:p-8">
-                    <MarkdownViewer content={ocrMd} className="max-w-4xl mx-auto" />
+                  <div className="h-full overflow-auto border rounded-lg bg-card px-4 py-5 md:px-6">
+                    <MarkdownViewer content={ocrMd} className="mx-auto w-full max-w-6xl" />
                   </div>
                 ) : (
                   <EmptyState text='Click "Generate OCR Markdown" to extract structured Markdown from the document.' />
@@ -573,9 +579,9 @@ export default function TranslationMarkdown() {
                 {translateStatus === "running" ? (
                   <LoadingState text={translationProgress || "Translating document…"} />
                 ) : translatedMd ? (
-                  <div className="h-full overflow-auto border rounded-lg bg-card p-6 md:p-8">
+                  <div className="h-full overflow-auto border rounded-lg bg-card px-4 py-5 md:px-6">
                     {docxPath && (
-                      <Alert className="mb-6 max-w-4xl mx-auto">
+                      <Alert className="mb-6 mx-auto w-full max-w-6xl">
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>This is the pre-edit source</AlertTitle>
                         <AlertDescription>
@@ -585,7 +591,7 @@ export default function TranslationMarkdown() {
                         </AlertDescription>
                       </Alert>
                     )}
-                    <MarkdownViewer content={translatedMd} className="max-w-4xl mx-auto" />
+                    <MarkdownViewer content={translatedMd} className="mx-auto w-full max-w-6xl" />
                   </div>
                 ) : (
                   <EmptyState text='Click "Translate Markdown" after generating OCR Markdown.' />

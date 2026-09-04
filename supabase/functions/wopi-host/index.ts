@@ -148,16 +148,19 @@ Deno.serve(async (req) => {
       // the client, which already renders it for PDF export) ---
       if (body?.mode === "seed") {
         const html: string = body?.html ?? "";
-        if (!html.trim()) return json({ error: "html required for mode=seed" }, 400);
 
         const row = await loadRow(supabase, documentId);
         if (!row) return json({ error: "No translation found for this document" }, 404);
 
         // Reuse the existing .docx unless the caller explicitly forces a rebuild —
-        // the .docx is the source of truth once created, so re-seeding destroys edits.
+        // the .docx is the source of truth once created, so re-seeding destroys
+        // edits. Checked BEFORE html is required: a reopen has nothing to seed
+        // from and legitimately sends no html.
         if (row.docx_storage_path && !body?.force) {
           return json({ success: true, storagePath: row.docx_storage_path, reused: true });
         }
+
+        if (!html.trim()) return json({ error: "html required to create the document" }, 400);
 
         const bytes = await convertHtmlToDocx(html);
         const storagePath = `${user.id}/docx/${documentId}.docx`;
@@ -177,6 +180,29 @@ Deno.serve(async (req) => {
         if (dbErr) throw new Error(`Failed to record docx: ${dbErr.message}`);
 
         return json({ success: true, storagePath, reused: false, size: bytes.length });
+      }
+
+      // --- discover: proxy Collabora's /hosting/discovery ---
+      // Collabora serves discovery without CORS headers, so the browser cannot
+      // fetch it directly. We fetch it over the compose network instead and
+      // return just the editor path; the client re-bases it onto its own
+      // browser-facing Collabora URL.
+      if (body?.mode === "discover") {
+        const res = await fetch(`${getCollaboraInternalUrl()}/hosting/discovery`);
+        if (!res.ok) throw new Error(`Collabora discovery failed (${res.status})`);
+        const xml = await res.text();
+
+        const actions = [...xml.matchAll(/<action\b[^>]*>/g)].map((m) => m[0]);
+        const docxAction =
+          actions.find((a) => /ext="docx"/.test(a) && /name="edit"/.test(a)) ??
+          actions.find((a) => /ext="docx"/.test(a));
+        const urlsrc = docxAction?.match(/urlsrc="([^"]+)"/)?.[1];
+        if (!urlsrc) return json({ error: "Collabora advertised no .docx editor" }, 502);
+
+        // Strip the origin: it is Collabora's internal address, unreachable
+        // from the browser.
+        const path = urlsrc.replace(/^https?:\/\/[^/]+/, "");
+        return json({ success: true, urlsrcPath: path, urlsrc });
       }
 
       // --- mint: issue a scoped WOPI access token ---
