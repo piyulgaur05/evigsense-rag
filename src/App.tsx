@@ -24,6 +24,7 @@ import ProcurementQueue from "./pages/procurement/ProcurementQueue";
 import ProcurementInbox from "./pages/procurement/ProcurementInbox";
 import ProcurementCase from "./pages/procurement/ProcurementCase";
 import ProcurementNew from "./pages/procurement/ProcurementNew";
+import ProcurementInsights from "./pages/procurement/ProcurementInsights";
 
 import TranslationMarkdown from "./pages/TranslationMarkdown";
 import NotFound from "./pages/NotFound";
@@ -85,6 +86,14 @@ const App = () => (
             element={
               <RequirePermission permission="mpr.view" signInPath="/procurement/sign-in">
                 <ProcurementQueue />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/procurement/insights"
+            element={
+              <RequirePermission permission="mpr.view" signInPath="/procurement/sign-in">
+                <ProcurementInsights />
               </RequirePermission>
             }
           />

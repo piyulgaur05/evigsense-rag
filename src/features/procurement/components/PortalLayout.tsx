@@ -46,13 +46,14 @@ export function PortalLayout({ children }: { children: ReactNode }) {
     ? procurementRoles.map((role) => ROLE_NAMES[role]).join(" · ")
     : "No desk assigned";
 
-  // Three fixed links, then the desks. An administrator holds all twelve
+  // Four fixed links, then the desks. An administrator holds all twelve
   // queues, which is more than a header row can carry, so they live in a menu
   // rather than pushing everything else off the end.
   const primary = [
     { title: "Dashboard", to: "/procurement", end: true },
     { title: "Waiting on you", to: "/procurement/inbox", end: false },
     { title: "Register", to: "/procurement/register", end: false },
+    { title: "Insights", to: "/procurement/insights", end: false },
   ];
 
   const queues = (portal?.queues ?? [])

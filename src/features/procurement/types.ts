@@ -21,6 +21,13 @@ export type CaseDocumentLink = Tables["procurement_case_documents"]["Row"];
 export type Lookup = Tables["procurement_lookups"]["Row"];
 export type ProcurementUserRole = Tables["procurement_user_roles"]["Row"];
 export type Committee = Tables["procurement_committees"]["Row"];
+export type Requisition = Tables["procurement_requisitions"]["Row"];
+export type RequisitionPatch = Omit<
+  Tables["procurement_requisitions"]["Insert"],
+  "case_id" | "id" | "created_by"
+>;
+export type BoqLine = Tables["procurement_boq_lines"]["Row"];
+export type BudgetHead = Tables["procurement_budget_heads"]["Row"];
 export type CommitteeMember = Tables["procurement_committee_members"]["Row"];
 
 /** A case joined with the bits the register and case header need. */
@@ -32,6 +39,27 @@ export type CaseListItem = ProcurementCase & {
 export type ClarificationWithAuthor = Clarification & {
   author_name: string | null;
 };
+
+/** One row of the budget ledger: what was allocated, claimed and is left. */
+export type BudgetLedgerRow =
+  Database["public"]["Functions"]["procurement_budget_ledger"]["Returns"][number];
+
+/** One entry in a case's activity timeline. */
+export type CaseActivityEntry =
+  Database["public"]["Functions"]["procurement_case_activity"]["Returns"][number];
+
+export type HeadlineMetrics =
+  Database["public"]["Functions"]["procurement_headline_metrics"]["Returns"][number];
+export type StageAgingRow =
+  Database["public"]["Functions"]["procurement_stage_aging"]["Returns"][number];
+export type MonthlyFlowRow =
+  Database["public"]["Functions"]["procurement_monthly_flow"]["Returns"][number];
+export type DepartmentSpendRow =
+  Database["public"]["Functions"]["procurement_department_spend"]["Returns"][number];
+export type CycleTimeRow =
+  Database["public"]["Functions"]["procurement_cycle_time"]["Returns"][number];
+export type StageCountRow =
+  Database["public"]["Functions"]["procurement_stage_counts"]["Returns"][number];
 
 export type CaseFilters = {
   search?: string;

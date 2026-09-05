@@ -92,6 +92,55 @@ let actions = await rpc(requester, "procurement_available_actions", { _case_id: 
 info("actions at draft", actions.map(a => a.code).join(", "));
 
 await rpc(requester, "procurement_record_decision", { _case_id: caseId, _action_code: "draft.submit" });
+
+// The requisition guard: an incomplete requisition cannot reach finance.
+const gapsBefore = await rpc(requester, "procurement_requisition_gaps", { _case_id: caseId });
+assert(gapsBefore.length > 0, `requisition reports ${gapsBefore.length} gap(s) before it is filled in`);
+try {
+  await rpc(requester, "procurement_record_decision", { _case_id: caseId, _action_code: "mpr.submit" });
+  console.log("  FAIL an incomplete requisition reached finance");
+  process.exit(1);
+} catch {
+  ok("incomplete requisition blocked by the stage guard");
+}
+
+// Fill it in: the requisition record, then an itemised bill of quantities.
+const units = await api(requester, "procurement_lookups?select=id,name&kind=eq.unit&order=sort_order");
+const ledger = await rpc(requester, "procurement_budget_ledger");
+await api(requester, "procurement_requisitions?on_conflict=case_id", {
+  method: "POST",
+  headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  body: JSON.stringify({
+    case_id: caseId,
+    justification: "Replaces the 2011 analyser withdrawn from service.",
+    required_by: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10),
+    budget_head_id: ledger[0]?.id ?? null,
+    cost_source: "boq",
+    created_by: requester.userId,
+  }),
+});
+await api(requester, "procurement_boq_lines", {
+  method: "POST",
+  headers: { Prefer: "return=minimal" },
+  body: JSON.stringify([
+    { case_id: caseId, line_no: 1, item_name: "Vector network analyser, 20 GHz",
+      quantity: 1, unit: units[0]?.name ?? "Nos.", estimated_rate: 4000000, created_by: requester.userId },
+    { case_id: caseId, line_no: 2, item_name: "Calibration kit, 3.5 mm",
+      quantity: 2, unit: units[0]?.name ?? "Nos.", estimated_rate: 125000, created_by: requester.userId },
+  ]),
+});
+
+// The case value follows the bill rather than anything the client typed.
+const [priced] = await api(requester, `procurement_cases?select=estimated_cost&id=eq.${caseId}`);
+assert(Number(priced.estimated_cost) === 4250000,
+  `case value derived from the bill of quantities (${priced.estimated_cost})`);
+
+// Documents are deliberately not a gap: the checklist lists only what stops
+// the case, and a requisition for a service may have nothing to attach.
+const gapsAfter = await rpc(requester, "procurement_requisition_gaps", { _case_id: caseId });
+assert(gapsAfter.length === 0,
+  `nothing blocks the requisition once it is filled in (${gapsAfter.join("; ") || "no gaps"})`);
+
 let after = await rpc(requester, "procurement_record_decision", { _case_id: caseId, _action_code: "mpr.submit" });
 after = Array.isArray(after) ? after[0] : after;
 assert(after.stage === "finance", `raised to ${after.stage} — "${after.status_label}"`);

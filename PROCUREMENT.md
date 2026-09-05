@@ -20,14 +20,19 @@ It is reached from its own door on the landing page — not from the document wo
 - Sixteen roles, twenty-five permissions, and the role-to-permission matrix.
 - Row-level security on every table, with a single visibility predicate the whole schema shares.
 - The portal: sign-in, a role-specific dashboard, queues, a register of all cases, a "waiting on you" worklist, the case file with a stage index, an action bar, a clarification thread, an audit trail, and case documents that ride the existing document ingest pipeline.
+- The requisition stage in full: the requisition record, an itemised bill of quantities that prices itself, the budget ledger it is charged against, supporting documents on the case, and a completeness gate the database enforces before finance ever sees it.
+- **Reading a bill of quantities out of a file** — a supplier's spreadsheet, a CSV, or a scope of work as a PDF — through the product's own model, offered back for review rather than written straight into the case.
+- **Asking questions about a case.** Everything attached goes through the ordinary ingest pipeline, and the assistant answers over the case's own paperwork for anyone allowed to see the case.
+- The case activity timeline — decisions, movements, questions, send-backs and paperwork on one rail, at every stage.
+- `/procurement/insights`: pipeline, intake, spend, time at each desk, budget headroom and stage aging, all counted under the reader's own visibility.
 - Demo accounts, one per role, seeded automatically.
 
 **Not built yet (later slices of the plan).**
 
-- The working detail of each stage: bill-of-quantities lines, budget heads and commitments, tenders and bids, technical evaluation grids, quotations and the comparative statement, committee meetings and votes, negotiation rounds, proposals, purchase orders, goods receipt notes, payment recommendations. The stages exist and a case moves through all of them; what each stage currently shows is a summary panel rather than its own working form.
-- `/procurement/admin` and `/procurement/insights`.
+- The working detail of the stages after the requisition: tenders and bids, technical evaluation grids, quotations and the comparative statement, committee meetings and votes, negotiation rounds, proposals, purchase orders, goods receipt notes, payment recommendations. The stages exist and a case moves through all of them; each one currently shows the case summary and the requisition it came from rather than its own working form.
+- `/procurement/admin`. Budget heads, lookups, roles and committee rosters are database work today.
 - Digital signature capture. Actions that should carry a signature are flagged `requires_signature` in the data, and the flag is recorded, but nothing enforces it yet.
-- Stage guards. `procurement_stage_actions.guard_function` exists and the engine calls it when it is set; no guard is set yet.
+- Stage guards beyond the requisition. `procurement_stage_actions.guard_function` is wired and `mpr.submit` uses it; the later stages have no preconditions yet beyond permission and remarks.
 - SLA escalation. `sla_hours` and `escalation_role` are stored per stage but nothing acts on them.
 
 ---
@@ -42,7 +47,8 @@ It is reached from its own door on the landing page — not from the document wo
 | `/procurement/register` | Every case the person is allowed to see, filterable. |
 | `/procurement/inbox` | "Waiting on you" — open cases sitting at a stage this person can act on, oldest first. |
 | `/procurement/queue/:queueKey` | One desk's queue. Twelve queue keys, listed in §5.4. |
-| `/procurement/new` | Raise a requisition. Needs `mpr.create`. |
+| `/procurement/insights` | The pipeline in charts: workload, intake, spend, time at each desk, budget headroom, aging. |
+| `/procurement/new` | Raise a requisition. Needs `mpr.create`. `?case=PC-…` reopens a draft in progress. |
 | `/procurement/case/:caseNo` | The case file. |
 
 Every route except the sign-in is wrapped in `RequirePermission`, which sends an unauthenticated visitor to `/procurement/sign-in` rather than to `/auth`.
@@ -149,7 +155,7 @@ All thirty-five moves, from `procurement_stage_actions`. "Remarks" means the eng
 | Code | At stage | Button | Permission | Moves to | Remarks | Sign | Chair |
 |---|---|---|---|---|---|---|---|
 | `draft.submit` | draft | Raise requisition | `mpr.create` | mpr | | | |
-| `mpr.submit` | mpr | Send for finance clearance | `mpr.create` | finance | | | |
+| `mpr.submit` † | mpr | Send for finance clearance | `mpr.create` | finance | | | |
 | `finance.clear` | finance | Clear the budget | `finance.approve` | tender | ✓ | ✓ | |
 | `finance.query` | finance | Ask the requester a question | `finance.approve` | — (holds) | ✓ | | |
 | `finance.return` | finance | Return to the requester | `finance.reject` | mpr | ✓ | | |
@@ -184,6 +190,8 @@ All thirty-five moves, from `procurement_stage_actions`. "Remarks" means the eng
 | `payment.return` | payment_recommendation | Return to stores | `payment.process` | goods_receipt | ✓ | | |
 | `payment.refuse` | payment_recommendation | Refuse the payment | `payment.process` | rejected | ✓ | ✓ | |
 
+† `mpr.submit` is the one action carrying a guard: `procurement_guard_requisition_ready` refuses it unless the case has a title, a department, a needed-by date and an estimated cost above zero. Everything else is checked by permission and remarks alone.
+
 An action with no target stage holds the case where it is and changes its status label — `Awaiting a reply from the requester`, `Awaiting a bidder clarification`, `Payment on hold`, and so on. Actions of kind `send_back` and `request_clarification` also open a thread on the case, so the person it was sent to sees the question, not just a status.
 
 ### 4.2 What happens at each stage
@@ -217,6 +225,49 @@ An action with no target stage holds the case where it is and changes its status
 **Closed.** End of the line. `case_status` becomes `closed` and `closed_at` is stamped.
 
 ---
+
+### 4.3 The requisition stage in detail
+
+The requisition is where a case gets its substance, so it is the one stage with a form of its own. It lives on one scrolling page — `/procurement/new` for a fresh one, the case file for one that came back — rather than a step wizard, because a requester rarely learns the facts in the order a wizard insists on.
+
+**Opening a draft.** A title and a department are all it takes. The case number (`PC-2026-0001`) comes back immediately, because nothing can be attached to a case that does not exist yet. The draft is visible to its author and the procurement administrator, nobody else, and `?case=PC-…` reopens it after leaving.
+
+**What is needed.** Title, why it is needed, department, material category, procurement type, priority, cost centre, delivery point, the date it is needed by, and any delivery or installation note the vendor will need. Everything but the title and department is optional at this point; the gate in front of finance says which of them stop the case moving.
+
+**The bill of quantities.** An editable table: item, specification, quantity, unit, HSN code, estimated rate. The line amount is computed by the database (`quantity × rate`), never by the browser, so a client cannot disagree with the arithmetic. The bill is optional — a service or a lump-sum job has none, and forcing one only produces a single line reading "the work".
+
+**The money.** A budget head is picked from the live ledger, which shows what each head has left after every case already charged to it. The estimated value comes either from the bill total or from a figure typed by hand; the choice is recorded as `cost_source`, and a trigger keeps `procurement_cases.estimated_cost` equal to whichever was chosen. Choosing the bill is only offered once at least one line carries a rate. If the value exceeds what the head has left, the shortfall is named on the page — it does not block the case, because a budget revision is a finance decision, not a form validation.
+
+**Supporting documents.** Uploads go through the product's ordinary ingest pipeline: the file lands in `documents`, joins the processing queue, is OCR'd and indexed, and is then linked to the case with the part it plays (`Cost estimate`, `Bill of quantities`, `Drawing`, and so on). That is why a case attachment is answerable by the assistant without a second pipeline.
+
+**Reading the bill out of a file.** Most requesters are handed the items rather than typing them: a supplier's quotation as a spreadsheet, a CSV export, an engineer's scope of work as a PDF. **Read items from a file** does two things with one pick:
+
+1. The file is attached to the case like any other document — stored, queued, read, indexed, and answerable by the assistant.
+2. Its items come back as draft lines.
+
+A spreadsheet or CSV is parsed in the browser and its own cells are sent to the model, which is far better evidence than a rendering of the same table; a PDF or Word file is read from the text the ingest pipeline produced, and if the queue has not finished, the panel says so and offers a retry rather than returning an empty bill. The model returns item, specification, quantity, unit, HSN code and per-unit rate; totals, taxes and page furniture are ignored.
+
+**Nothing is written without being shown.** The result appears as a table with what the model made of the file, and the requester chooses **Use these items**, **Add to the bill**, or discards it. An extraction that saved itself would be worse than retyping, because nobody would check it. Rates in Indian formatting (`1,25,000`, `₹ 40,00,000`) are parsed to plain numbers; anything the model could not read comes back empty rather than guessed.
+
+**The gate.** `procurement_requisition_gaps(case)` lists what is still missing — a title, a department, a needed-by date, a cost above zero — and the page shows it as a live checklist. All four are enforced by the database in `procurement_guard_requisition_ready`, so no client can put an incomplete requisition in front of finance.
+
+**Documents are optional.** A requisition for a service or a lump-sum job may have nothing to attach, so paperwork is suggested, never demanded: the portal says nothing is attached and that finance will ask if they need something. This was a deliberate reversal — an earlier version listed documents as a gap and quietly blocked exactly those cases.
+
+**Raising it.** One button does two recorded things: `draft.submit` raises the case out of draft, then `mpr.submit` puts it to finance. Both go through the engine and both appear in the trail, so a single act by the requester is still two honest entries.
+
+### 4.4 The activity timeline
+
+`procurement_case_activity(case)` merges four sources into one reverse-chronological trail — decisions from `procurement_case_events`, movements from `procurement_stage_history`, questions and send-backs from `procurement_clarifications`, and paperwork from `procurement_case_documents` — each with who did it, when, at which stage, and the remarks they left. The interleaving happens in the database rather than in the browser.
+
+The portal draws it as one component on the case file, and it is the same component at every stage: a tender's activity and a payment's activity are the same shape of fact. Gaps between entries are shown as elapsed time ("4 days later"), which is what makes a stalled case visible without reading timestamps.
+
+### 4.5 Asking about a case
+
+Every file attached to a case rides the product's ordinary ingest — stored, OCR'd where needed, chunked and embedded — so a case's paperwork is already searchable the moment it finishes processing. **Ask about this case** puts the existing assistant in front of it, scoped to that case.
+
+The scoping matters and is not a filter in the browser. The archive's own search (`search_documents_by_embedding`) is limited to chunks the asker uploaded, which is right for a personal archive and wrong for a case file: a finance officer asking about a requisition is asking about a file the requester attached. `procurement_search_case_chunks(case, user, embedding, …)` searches the documents linked to one case, checks `procurement_can_view_case` first, and returns nothing at all to somebody outside the case. `rag-assistant` takes a `caseId` and uses it instead of the personal search; everything downstream — reranking, citations, conversation history — is unchanged.
+
+The panel shows how much is ready (`procurement_case_document_readiness`), polls while anything is still being read, offers three opening questions so nobody faces an empty box, and cites the documents each answer came from.
 
 ## 5. Roles, permissions and desks
 
@@ -333,6 +384,17 @@ Fifteen tables. The reference tables are what make the workflow data-driven: the
 | `procurement_user_roles` | Role grants, in their own table — the same anti-privilege-escalation shape as the app's `user_roles`. |
 | `procurement_committees`, `procurement_committee_members` | TEC, DPC and PNC rosters. Members carry `is_chair`, voting rights, attendance, findings, conflict-of-interest and a signature timestamp. |
 
+**The requisition**
+
+| Table | Holds |
+|---|---|
+| `procurement_requisitions` | One row per case: justification, needed-by date, priority, category, procurement type, cost centre, delivery point, budget head, `cost_source` (`boq` or `manual`), the manual figure, and any delivery note. |
+| `procurement_boq_lines` | The itemised bill: line number, item, specification, quantity, unit, HSN code, estimated rate, and `line_amount` as a generated column. Unique per case and line number. |
+| `procurement_budget_heads` | The ledger: name, code, fiscal year, department, category, allocated amount, active. Unique on name and fiscal year. |
+| `procurement_budget_commitments` | Explicit claims against a head — `commitment`, `spend` or `release`. Live cases commit automatically (see below); this table is for everything the case value does not already say. |
+
+Headroom is not stored. `procurement_budget_committed(head)` adds up the estimated value of every live case charged to that head — anything not rejected and past draft — plus the explicit ledger rows, and `procurement_budget_available(head)` subtracts that from the allocation. A draft has not asked for the money yet; a rejected case has given it back.
+
 ---
 
 ## 8. The engine
@@ -368,6 +430,19 @@ Everything goes through `procurement_record_decision(_case_id, _action_code, _re
 | `procurement_role_reaches_stage(user, stage)` | Rule 5 of §6. |
 | `procurement_next_ref(prefix)` | `PC-2026-0001` and friends. |
 | `procurement_log_event(...)` | Writes the audit row. |
+| `procurement_boq_total(case)` | Sums the generated line amounts. |
+| `procurement_sync_case_cost(case)` | Keeps `cases.estimated_cost` equal to the requisition's chosen cost source. Fired by triggers on both the requisition and its lines, so the case value is never typed twice. |
+| `procurement_budget_committed`, `procurement_budget_available`, `procurement_budget_ledger` | The budget ledger and its arithmetic. |
+| `procurement_guard_requisition_ready(case, payload)` | The gate in front of finance, called by the engine as `mpr.submit`'s guard. |
+| `procurement_requisition_gaps(case)` | The same rules, as a list of what is still missing, for the portal to show before the button is pressed. |
+| `procurement_case_activity(case)` | The merged activity timeline. |
+| `procurement_search_case_chunks(case, user, embedding, threshold, count)` | Case-scoped retrieval for the assistant, behind the case visibility check. |
+| `procurement_case_document_readiness(case)` | How many of a case's documents are indexed, still being read, or failed. |
+| `procurement_headline_metrics()` | Open, closed and rejected counts, open and awarded value, average cycle days, cases past their timer. |
+| `procurement_stage_aging()` | Per open case: how long it has sat at its current stage, against that stage's SLA, and whether it has breached. |
+| `procurement_monthly_flow(months)` | Cases opened and closed per month, with the value opened. |
+| `procurement_department_spend()` | Cases and estimated value per department. |
+| `procurement_cycle_time()` | Average hours actually spent at each stage, measured from the stage history. |
 
 All of them are `SECURITY DEFINER` with `SET search_path = public`, following the app's existing convention.
 
@@ -382,21 +457,34 @@ src/components/auth/
 
 src/features/procurement/
   types.ts
-  api/        cases.ts, lookups.ts, documents.ts
+  api/        cases.ts, lookups.ts, documents.ts, requisition.ts,
+              insights.ts, boq-import.ts, assistant.ts
   hooks/      useProcurement.ts — react-query keys and hooks
   lib/        portals.ts (roles → desks, queues, the ten-step chain)
               stages.ts (a one-line brief per stage)
               format.ts (₹ with en-IN grouping, lakh/crore short form, dates, ages)
   components/ PortalLayout, StageIndex, StageActionBar, StageBadge,
-              CaseRegisterTable, ClarificationThread, CaseDocuments, CaseAudit
-  stages/     StageWorkPanel.tsx — the per-stage centre panel
+              CaseRegisterTable, ClarificationThread, CaseDocuments,
+              CaseTimeline, RequisitionEditor, BoqEditor, BoqImport,
+              CaseAssistant
+  components/charts/
+              Charts.tsx  — CategoryBars, FlowChart, MeterRow
+              palette.ts  — the validated chart colours, light and dark
+  stages/     StageWorkPanel.tsx    — the per-stage centre panel
+              RequisitionPanel.tsx  — the requisition, editable at draft and
+                                      requisition, read-only thereafter
 
 src/pages/procurement/
   ProcurementSignIn, ProcurementHome, ProcurementRegister,
-  ProcurementQueue, ProcurementInbox, ProcurementCase, ProcurementNew
+  ProcurementQueue, ProcurementInbox, ProcurementCase, ProcurementNew,
+  ProcurementInsights
 ```
 
-The case file puts the stage index down the left, the current stage's work panel in the centre, and documents, clarifications and the audit trail alongside. The action bar renders whatever `procurement_available_actions()` returned, and forces a remarks field when the action demands one — but the database is the thing that enforces it, not the form.
+The case file puts the stage index down the left, the current stage's work panel in the centre, and documents, clarifications and the activity timeline alongside. The requisition sits under the work panel at every stage — editable while the case is still the requester's, read-only once it has moved on, because finance decides against it and the tender is written from it.
+
+Two edge functions serve the portal: `supabase/functions/extract-boq` reads a bill of quantities out of a file and returns it for review, and the existing `rag-assistant` gained a `caseId` that swaps the personal search for the case-scoped one. Neither writes to a case.
+
+**Chart colours are validated, not chosen by eye.** `components/charts/palette.ts` carries two categorical hues per theme — the product's blue and an ochre — checked with the `dataviz` skill's validator for lightness band, chroma, contrast against the card surface, and colourblind separation (worst adjacent pair ΔE 30.2 in light, 26.5 in dark, against a floor of 8). Magnitude charts use the blue alone and label every bar, so nothing depends on colour to be read. The `--signal` cyan never appears: `index.css` reserves it for values the machine derived, and a count of cases is not one. The action bar renders whatever `procurement_available_actions()` returned, and forces a remarks field when the action demands one — but the database is the thing that enforces it, not the form.
 
 ---
 
@@ -458,6 +546,8 @@ npm run check:procurement:api   # REST-level: real sign-ins through Kong/PostgRE
 `check:procurement` impersonates users by setting `request.jwt.claims`, opens a probe case, and asserts the visibility and transition rules hold. `check:procurement:api` signs in as the seeded users for real and walks a case from draft to tender, asserting along the way that:
 
 - the requester can open a case and raise it, and it reaches finance with the status `Awaiting finance clearance`;
+- an incomplete requisition is refused by the stage guard, and `procurement_requisition_gaps` names what is missing;
+- once the requisition and its bill of quantities are saved, the case value equals the bill total — the trigger, not the client, decides it;
 - an action the caller has no permission for is refused by the database;
 - the case appears in the right person's worklist;
 - the payments desk cannot see a case still at tender;
@@ -531,20 +621,26 @@ Sign in as `user@jyoma.ai`. Expect: signed in successfully, but told plainly tha
 
 **Step 1 — raise the requisition.** *(`requester@jyoma.ai`)*
 
-Go to **Raise a requisition** (`/procurement/new`). Fill in:
+Go to **Raise a requisition** (`/procurement/new`). Give it a title — `Spectrum analyser, 26.5 GHz, for the RF laboratory` (six characters minimum, or the form objects) — pick `Electronics & Instrumentation`, and press **Open the draft**.
 
-- Title: `Spectrum analyser, 26.5 GHz, for the RF laboratory` (six characters minimum, or the form objects)
-- Department: `Electronics & Instrumentation`
-- Estimated value: `4850000`
-- Justification: anything
+Expect: the page becomes the requisition itself, headed `DRAFT · PC-2026-0001`; a checklist at the top says what is still missing (a needed-by date, a cost above zero, a document); the **Raise and send for finance clearance** button is disabled.
 
-Submit. Expect: you land on the case file at `/procurement/case/PC-2026-0001`; stage **Draft**, status `Draft`; the audit trail has the case opening; the stage index shows draft highlighted and thirteen stages ahead of it.
+Now fill it in:
 
-Press **Raise requisition** in the action bar. Expect: stage **Requisition**, status `Requisition raised`.
+1. **What is needed** — a justification, a category, a procurement type, a priority, and a **needed by** date some weeks out.
+2. **Bill of quantities** — either way round:
+   - *By hand:* press **Add an item** and enter `Spectrum analyser, 26.5 GHz`, quantity `1`, unit `Nos.`, rate `4000000`. Add a second line — `Calibration kit, 3.5 mm`, quantity `2`, rate `125000`. Expect the bill total to read `₹42,50,000`.
+   - *From a file:* press **Read items from a file** and pick a spreadsheet or CSV of items (see §10.9 for one to paste). Expect a toast saying the file was attached, then — after up to a minute, since it is a model call — a review table of what was read. Press **Use these items** and confirm they land in the bill with their rates. Confirm the file also appears under **Supporting documents** and moves to `indexed`.
+3. **The money** — pick the budget head `Laboratory Equipment`, and confirm the select shows how much it has left. Choose **The bill total**; the "raising this for" figure should follow it. Try picking a head with less headroom than the bill and confirm the shortfall line appears.
+4. **Supporting documents** — optional. Attach any PDF and choose the type `Cost estimate`. Expect it to appear in the list and to move through `queued → reading → indexed` as the ordinary pipeline picks it up. It should also be visible in the document workspace at `/documents`, because it is the same document. Then confirm the opposite: with nothing attached at all, the checklist stays empty and the case can still be raised — paperwork is suggested, not demanded.
 
-Press **Send for finance clearance**. Expect: stage **Finance**, status `Awaiting finance clearance`; the case leaves your worklist; the audit trail now has three entries.
+Press **Save the requisition**. Expect a toast naming the case, the checklist to empty, and the raise button to become available.
 
-*Optionally*, attach a document from the case file first, and confirm it appears under the case documents with its type and that it also shows up in the normal document workspace — case attachments ride the same ingest pipeline.
+Check the arithmetic held: reopen the case and confirm the header value is `₹42,50,000` — the figure came from the bill, not from anything typed into a cost box.
+
+Press **Raise and send for finance clearance**. Expect: the case lands on `/procurement/case/PC-2026-0001` at stage **Finance**, status `Awaiting finance clearance`; the activity timeline carries two new entries, `Raise requisition` (draft → requisition) and `Send for finance clearance` (requisition → finance); the case leaves your worklist.
+
+*Also worth trying:* press **Raise and send** before filling anything in. The button is disabled in the portal, and if you call the action directly the database refuses it with `This case is not ready for "Send for finance clearance"`.
 
 ---
 
@@ -626,9 +722,25 @@ Move to the payments queue and press **Approve payment and close** with remarks.
 
 ---
 
-**Step 11 — read the trail.** *(`head@jyoma.ai`)*
+**Step 11 — the charts.** *(any account; `head@jyoma.ai` sees everything)*
 
-Sign in as the purchase head. Expect: every case visible, including this one; the case file readable end to end; **no** action buttons anywhere. Open the case and confirm the audit trail has one entry per action taken above, each with the stage it was taken at and the remarks, and that the stage history reads as a clean chain — draft, requisition, finance, requisition (the send-back), finance, tender, technical evaluation, commercial, comparative statement, purchase committee, negotiation, purchase proposal, purchase order, goods receipt, payment, closed.
+Open `/procurement/insights`. Expect:
+
+- **Five headline tiles** — open cases, open value, closed, average cycle, past their timer.
+- **Where the work is** — one bar per stage that has open cases, each labelled with its count. The longest bar should reach the right edge of the plot.
+- **Opened and closed** — twelve months, two series on one scale, with a legend. **Show the numbers** swaps the chart for the same data as a table.
+- **Value by department** — bars labelled in lakhs and crores.
+- **Time at each desk** — a meter per stage that a case has actually passed through, against that stage's SLA hours. A stage that has taken longer than its timer draws in the destructive colour.
+- **Budget headroom** — committed against allocated for each head. After the walkthrough above, `Laboratory Equipment` should show the case's value as committed.
+- **Oldest in the queue** — the eight longest-waiting open cases, with `over` beside anything past its timer.
+
+Then sign in as `requester@jyoma.ai` and open the same page. Every number should be smaller: the functions count under the reader's own visibility, so a requester sees their own cases and nothing else. That difference is the check — if both roles see the same totals, the visibility predicate is not being applied.
+
+---
+
+**Step 12 — read the trail.** *(`head@jyoma.ai`)*
+
+Sign in as the purchase head. Expect: every case visible, including this one; the case file readable end to end; **no** action buttons anywhere. Open the case and confirm the **Activity** timeline has one entry per action taken above — decisions, movements, the clarification thread and every document attached — each with who did it, the stage it happened at, the remarks, and the gap since the previous entry. The stage history should read as a clean chain — draft, requisition, finance, requisition (the send-back), finance, tender, technical evaluation, commercial, comparative statement, purchase committee, negotiation, purchase proposal, purchase order, goods receipt, payment, closed.
 
 ### 10.6 Rejection
 
@@ -652,9 +764,13 @@ These are as much a part of the test as the happy path. Each should be refused b
 | `tec.member@` calling `tec.recommend` | `You do not hold tec.chair` |
 | `tec.chair@` calling `tec.recommend` with no committee on the case | `Only the chairperson can take this decision` |
 | `finance@` calling `finance.clear` with empty remarks | `Remarks are required for "Clear the budget"` |
+| `requester@` calling `mpr.submit` on a requisition with no needed-by date or no cost | `This case is not ready for "Send for finance clearance"` |
+| `requester@` editing the requisition after it reached finance | Refused by policy — the requisition is editable only at draft and requisition |
+| `finance@` editing another department's bill of quantities | Refused by policy — only the requester (or the procurement admin) may write it |
 | Anyone calling `mpr.submit` on a case at tender | `mpr.submit is not available while the case is at tender` |
 | Anyone `UPDATE`ing `procurement_cases.stage` directly through the API | Refused by policy; stage only moves through the engine |
 | `user@` opening `/procurement` | Redirected to the portal sign-in, then told the account holds no desk |
+| `payments@` asking the assistant about a case still at tender | An answer saying it found nothing, and an empty source list — the retrieval function returns no rows outside the case's readers |
 
 A convenient way to run one of these by hand:
 
@@ -669,8 +785,9 @@ SELECT * FROM public.procurement_record_decision(
 ### 10.8 Starting over
 
 ```sql
--- Wipes the cases and everything hanging off them. Leaves reference data,
--- roles and accounts alone.
+-- Wipes the cases and everything hanging off them — requisitions, bills of
+-- quantities, documents links, clarifications and the trail all cascade.
+-- Leaves reference data, budget heads, roles and accounts alone.
 TRUNCATE public.procurement_cases CASCADE;
 ```
 
@@ -678,12 +795,43 @@ To re-seed the demo accounts after that, `npm run seed:procurement` — it is id
 
 ---
 
+### 10.9 The file reader and the case assistant
+
+**Reading a bill out of a file.** Save this as `boq.csv` (tab or comma separated both work) and feed it to **Read items from a file** on a draft:
+
+```
+S.No,Description of item,Specification,Qty,Unit,HSN,Rate (INR)
+1,Vector network analyser,"20 GHz, 2-port, with calibration",1,Nos.,9030,"40,00,000"
+2,Calibration kit,"3.5 mm, male-female",2,Nos.,9030,"1,25,000"
+3,Phase-stable test cables,"1 m, 26.5 GHz",4,Nos.,8544,"18,000"
+,Sub total,,,,,"42,97,000"
+,GST 18%,,,,,"7,73,460"
+```
+
+Expect exactly three lines back — the sub-total and GST rows are not items and must not appear — with rates `4000000`, `125000` and `18000`, the Indian comma formatting parsed away. Expect a note saying what was read. Expect nothing to be written until you press **Use these items**.
+
+A PDF or Word file takes the other path: it is attached, and the reader waits on the ingest pipeline. If the queue has not finished, expect *"… is still being read. Try again in a moment."* and a **Try again** button, not an empty bill.
+
+The call is a model reading a long prompt and can take the better part of a minute against a remote endpoint; the button says so while it runs.
+
+**Asking about a case.** Attach a document with facts in it — delivery weeks, warranty months, payment terms — to a case, wait for `indexed`, then open the case file and use **Ask about this case**:
+
+- Ask as the requester who attached it. Expect an answer citing the document by title.
+- Sign in as `finance@jyoma.ai`, open the same case, ask the same thing. Expect the same answer, cited. This is the check that matters: the ordinary archive search is scoped to the asker's own uploads, so an answer here proves the case-scoped retrieval is being used.
+- Sign in as `payments@jyoma.ai` while the case is still at finance or tender. Expect an answer saying it found nothing, and no sources — the case is not theirs to read.
+- Confirm the readiness line: attach a second file and watch the panel go from "1 document" to "1 document … 1 more still being read" and back, without a page refresh.
+
+
 ## 11. Known limits
 
 - **Signatures are flagged, not captured.** Fourteen actions carry `requires_signature = true`; nothing yet asks for one or blocks the action without it.
-- **Stage guards are wired but empty.** The engine calls `guard_function(case_id, payload)` when an action names one. No action names one yet, so no stage has a precondition beyond permission and remarks.
-- **Stage work panels are summaries.** Each stage shows what the case knows and what the stage decides; the stage's own working data arrives with later slices.
+- **Only the requisition has a stage guard.** `mpr.submit` is guarded; every later action is checked by permission and remarks alone, so the preconditions for, say, a commercial decision are not enforced yet.
+- **Documents are optional by design.** Nothing requires paperwork on a requisition — a service or a lump-sum job may have none. If your organisation wants a hard rule, it belongs in `procurement_guard_requisition_ready`, not in the portal.
+- **A read bill is a draft, not a fact.** `extract-boq` is a model reading a file; it is shown for review and never written on its own, but a requester who accepts it without looking will put the model's arithmetic on the case. Rates and quantities deserve a glance.
+- **The case assistant answers from what has been indexed.** A file attached a moment ago is not yet answerable, which the panel says; and a document the pipeline failed to read is silently absent from answers rather than flagged in them.
+- **Stages after the requisition are summaries.** Each shows the case, the requisition it came from, and its decisions; the stage's own working data — bids, evaluations, quotations, orders — arrives with later slices.
+- **Budget commitments are derived, not posted.** Headroom is computed from live case values rather than written as ledger entries at each approval, so there is no record of when a commitment was made, only what it is now.
 - **Some declared return paths have no button.** `mpr → draft`, `cst → tec`, `cst → tender`, `purchase_proposal → dpc`, `purchase_proposal → pnc` are legal in the data but not offered anywhere yet.
 - **The receipt and payment officer's desk is registered as goods receipt only.** They hold `payment.process` and can act at the payment stage, but visibility is derived from goods receipt onward — which is the same thing in practice, since payment comes after.
 - **No SLA enforcement.** Timers and escalation roles are stored and displayed; nothing escalates.
-- **No admin or insights screens.** Role assignment, lookups, committee rosters and analytics are database work today.
+- **No admin screen.** Role assignment, lookups, budget heads and committee rosters are database work today.

@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { PortalLayout } from "@/features/procurement/components/PortalLayout";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { CaseAudit } from "@/features/procurement/components/CaseAudit";
+import { CaseAssistant } from "@/features/procurement/components/CaseAssistant";
+import { CaseTimeline } from "@/features/procurement/components/CaseTimeline";
 import { CaseDocuments } from "@/features/procurement/components/CaseDocuments";
 import { ClarificationThread } from "@/features/procurement/components/ClarificationThread";
 import { StageActionBar } from "@/features/procurement/components/StageActionBar";
@@ -21,7 +22,7 @@ import type { ProcurementStage } from "@/features/procurement/types";
  */
 export default function ProcurementCase() {
   const { caseNo } = useParams<{ caseNo: string }>();
-  const { can } = useAuth();
+  const { can, user, hasProcurementRole } = useAuth();
   const { data: procurementCase, isLoading, error } = useCase(caseNo);
   const { data: stages } = useStageConfig();
   const { data: history } = useStageHistory(procurementCase?.id);
@@ -61,6 +62,13 @@ export default function ProcurementCase() {
       </PortalLayout>
     );
   }
+
+  // A requisition stays the requester's to correct until it leaves them.
+  const canEditRequisition =
+    procurementCase.case_status === "open" &&
+    (procurementCase.requester_id === user?.id ||
+      procurementCase.created_by === user?.id ||
+      hasProcurementRole("proc_admin"));
 
   const activeStage = selected ?? procurementCase.stage;
   const isCurrent = activeStage === procurementCase.stage;
@@ -133,6 +141,7 @@ export default function ProcurementCase() {
               config={config}
               procurementCase={procurementCase}
               isCurrent={isCurrent}
+              canEditRequisition={canEditRequisition}
             />
 
             {isCurrent && procurementCase.case_status === "open" && (
@@ -156,13 +165,35 @@ export default function ProcurementCase() {
               stage={activeStage}
               canUpload={can("upload_docs")}
             />
+            <CaseAssistant caseId={procurementCase.id} caseNo={procurementCase.case_no} />
             <ClarificationThread caseId={procurementCase.id} stage={procurementCase.stage} />
-            <CaseAudit caseId={procurementCase.id} />
+            <section className="rounded-lg border border-border bg-card">
+              <header className="border-b border-border px-5 py-4">
+                <h2 className="text-[15px] font-semibold text-foreground">Activity</h2>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  Every decision, movement, question and document on this case.
+                </p>
+              </header>
+              <div className="px-5 py-5">
+                <CaseTimeline caseId={procurementCase.id} />
+              </div>
+            </section>
           </aside>
 
           <div className="space-y-6 xl:hidden lg:col-start-2">
+            <CaseAssistant caseId={procurementCase.id} caseNo={procurementCase.case_no} />
             <ClarificationThread caseId={procurementCase.id} stage={procurementCase.stage} />
-            <CaseAudit caseId={procurementCase.id} />
+            <section className="rounded-lg border border-border bg-card">
+              <header className="border-b border-border px-5 py-4">
+                <h2 className="text-[15px] font-semibold text-foreground">Activity</h2>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  Every decision, movement, question and document on this case.
+                </p>
+              </header>
+              <div className="px-5 py-5">
+                <CaseTimeline caseId={procurementCase.id} />
+              </div>
+            </section>
           </div>
         </div>
       </div>

@@ -13,6 +13,10 @@ const requestSchema = z.object({
   query: z.string().trim().min(1, "Query cannot be empty").max(5000, "Query too long"),
   conversationId: z.string().uuid("Invalid conversation ID").nullish(),
   documentId: z.string().uuid("Invalid document ID").optional(),
+  // Ask about a procurement case rather than one document: retrieval is
+  // scoped to the paperwork attached to that case, for anyone the case
+  // policies let read it -- including people who did not upload it.
+  caseId: z.string().uuid("Invalid case ID").optional(),
 });
 
 interface AvailableImage {
@@ -119,7 +123,7 @@ serve(async (req) => {
       );
     }
     
-    const { query, conversationId, documentId } = validationResult.data;
+    const { query, conversationId, documentId, caseId } = validationResult.data;
     const authHeader = req.headers.get('Authorization')!;
     
     const supabase = createClient(
@@ -221,15 +225,28 @@ serve(async (req) => {
     const RERANK_CANDIDATES = parseInt(Deno.env.get('RERANK_CANDIDATES') ?? '50', 10) || 50;
     const RERANK_TOP_K = parseInt(Deno.env.get('RERANK_TOP_K') ?? '8', 10) || 8;
 
-    const { data: similarChunks, error: searchError } = await supabase
-      .rpc('search_documents_by_embedding', {
-        query_embedding: embeddingString,
-        // Lower threshold when scoped to a single document (cross-lingual queries
-        // e.g. English question on Chinese/Russian doc score much lower)
-        match_threshold: rerankOn ? 0.0 : (documentId ? 0.0 : 0.3),
-        match_count: rerankOn ? RERANK_CANDIDATES : (documentId ? 50 : 15),
-        filter_user_id: user.id
-      });
+    // A case question searches the case's own paperwork. The ordinary search
+    // is scoped to what the asker uploaded, which is right for a personal
+    // archive and wrong here: a finance officer asking about a requisition is
+    // asking about a file the requester attached. The case function does its
+    // own permission check and returns nothing to anyone outside the case.
+    const { data: similarChunks, error: searchError } = caseId
+      ? await supabase.rpc('procurement_search_case_chunks', {
+          _case_id: caseId,
+          _user_id: user.id,
+          query_embedding: embeddingString,
+          match_threshold: 0.0,
+          match_count: rerankOn ? RERANK_CANDIDATES : 30,
+        })
+      : await supabase
+        .rpc('search_documents_by_embedding', {
+          query_embedding: embeddingString,
+          // Lower threshold when scoped to a single document (cross-lingual queries
+          // e.g. English question on Chinese/Russian doc score much lower)
+          match_threshold: rerankOn ? 0.0 : (documentId ? 0.0 : 0.3),
+          match_count: rerankOn ? RERANK_CANDIDATES : (documentId ? 50 : 15),
+          filter_user_id: user.id
+        });
 
     if (searchError) {
       console.error('Vector search error:', searchError);
@@ -300,7 +317,7 @@ serve(async (req) => {
     // The top-2-pages heuristic exists to compensate for noisy vector ranking.
     // A cross-encoder has already done that selection, so re-filtering here only
     // throws away good context.
-    if (!documentId && !rerankOn && filteredChunks.length > 0) {
+    if (!documentId && !caseId && !rerankOn && filteredChunks.length > 0) {
       // Only apply page filtering if not searching within a specific document
       // Group chunks by page and find max similarity per page
       const pageRelevance = new Map<string, number>();

@@ -1205,6 +1205,176 @@ export type Database = {
         }
         Relationships: []
       }
+      procurement_boq_lines: {
+        Row: {
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_note: string | null
+          estimated_rate: number | null
+          hsn_code: string | null
+          id: string
+          item_name: string
+          line_amount: number | null
+          line_no: number
+          quantity: number
+          specification: string | null
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          delivery_note?: string | null
+          estimated_rate?: number | null
+          hsn_code?: string | null
+          id?: string
+          item_name: string
+          line_amount?: number | null
+          line_no: number
+          quantity?: number
+          specification?: string | null
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_note?: string | null
+          estimated_rate?: number | null
+          hsn_code?: string | null
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          quantity?: number
+          specification?: string | null
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_boq_lines_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_budget_commitments: {
+        Row: {
+          amount: number
+          budget_head_id: string
+          case_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          budget_head_id: string
+          case_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          budget_head_id?: string
+          case_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_budget_commitments_budget_head_id_fkey"
+            columns: ["budget_head_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_budget_heads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_budget_commitments_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_budget_heads: {
+        Row: {
+          active: boolean
+          allocated: number
+          category_id: string | null
+          code: string | null
+          created_at: string
+          created_by: string | null
+          department_id: string | null
+          fiscal_year: string
+          id: string
+          name: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          allocated?: number
+          category_id?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          department_id?: string | null
+          fiscal_year: string
+          id?: string
+          name: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          allocated?: number
+          category_id?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          department_id?: string | null
+          fiscal_year?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_budget_heads_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_budget_heads_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_case_documents: {
         Row: {
           case_id: string
@@ -1599,6 +1769,113 @@ export type Database = {
           year?: number
         }
         Relationships: []
+      }
+      procurement_requisitions: {
+        Row: {
+          budget_head_id: string | null
+          case_id: string
+          category_id: string | null
+          cost_centre_id: string | null
+          cost_source: string
+          created_at: string
+          created_by: string | null
+          delivery_note: string | null
+          id: string
+          justification: string | null
+          manual_cost: number
+          priority_id: string | null
+          procurement_type_id: string | null
+          required_by: string | null
+          updated_at: string
+          warehouse_id: string | null
+        }
+        Insert: {
+          budget_head_id?: string | null
+          case_id: string
+          category_id?: string | null
+          cost_centre_id?: string | null
+          cost_source?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_note?: string | null
+          id?: string
+          justification?: string | null
+          manual_cost?: number
+          priority_id?: string | null
+          procurement_type_id?: string | null
+          required_by?: string | null
+          updated_at?: string
+          warehouse_id?: string | null
+        }
+        Update: {
+          budget_head_id?: string | null
+          case_id?: string
+          category_id?: string | null
+          cost_centre_id?: string | null
+          cost_source?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_note?: string | null
+          id?: string
+          justification?: string | null
+          manual_cost?: number
+          priority_id?: string | null
+          procurement_type_id?: string | null
+          required_by?: string | null
+          updated_at?: string
+          warehouse_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_requisitions_budget_head_id_fkey"
+            columns: ["budget_head_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_budget_heads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_cost_centre_id_fkey"
+            columns: ["cost_centre_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_priority_id_fkey"
+            columns: ["priority_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_procurement_type_id_fkey"
+            columns: ["procurement_type_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_requisitions_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       procurement_return_paths: {
         Row: {
@@ -2367,6 +2644,29 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      procurement_boq_total: { Args: { _case_id: string }; Returns: number }
+      procurement_budget_available: {
+        Args: { _budget_head_id: string }
+        Returns: number
+      }
+      procurement_budget_committed: {
+        Args: { _budget_head_id: string }
+        Returns: number
+      }
+      procurement_budget_ledger: {
+        Args: never
+        Returns: {
+          active: boolean
+          allocated: number
+          available: number
+          code: string
+          committed: number
+          department: string
+          fiscal_year: string
+          id: string
+          name: string
+        }[]
+      }
       procurement_can_view_case: {
         Args: { _case_id: string; _user_id: string }
         Returns: boolean
@@ -2381,9 +2681,67 @@ export type Database = {
         }
         Returns: boolean
       }
+      procurement_case_activity: {
+        Args: { _case_id: string }
+        Returns: {
+          actor_id: string
+          actor_name: string
+          actor_role: string
+          detail: string
+          happened_at: string
+          kind: string
+          stage: Database["public"]["Enums"]["procurement_stage"]
+          title: string
+          to_stage: Database["public"]["Enums"]["procurement_stage"]
+        }[]
+      }
+      procurement_case_document_readiness: {
+        Args: { _case_id: string }
+        Returns: {
+          failed: number
+          indexed: number
+          still_reading: number
+          total: number
+        }[]
+      }
       procurement_committee_kind_for_stage: {
         Args: { _stage: Database["public"]["Enums"]["procurement_stage"] }
         Returns: Database["public"]["Enums"]["procurement_committee_kind"]
+      }
+      procurement_cycle_time: {
+        Args: never
+        Returns: {
+          avg_hours: number
+          moves: number
+          sla_hours: number
+          stage: Database["public"]["Enums"]["procurement_stage"]
+          stage_label: string
+        }[]
+      }
+      procurement_department_spend: {
+        Args: never
+        Returns: {
+          cases: number
+          department: string
+          open_cases: number
+          total_value: number
+        }[]
+      }
+      procurement_guard_requisition_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_headline_metrics: {
+        Args: never
+        Returns: {
+          avg_cycle_days: number
+          awarded_value: number
+          breaching_cases: number
+          closed_cases: number
+          open_cases: number
+          open_value: number
+          rejected_cases: number
+        }[]
       }
       procurement_log_event: {
         Args: {
@@ -2403,6 +2761,15 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      procurement_monthly_flow: {
+        Args: { _months?: number }
+        Returns: {
+          closed: number
+          month: string
+          opened: number
+          opened_value: number
+        }[]
       }
       procurement_my_permissions: {
         Args: never
@@ -2497,12 +2864,47 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      procurement_requisition_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
       procurement_role_reaches_stage: {
         Args: {
           _stage: Database["public"]["Enums"]["procurement_stage"]
           _user_id: string
         }
         Returns: boolean
+      }
+      procurement_search_case_chunks: {
+        Args: {
+          _case_id: string
+          _user_id: string
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          chunk_text: string
+          document_id: string
+          document_title: string
+          page_number: number
+          similarity: number
+        }[]
+      }
+      procurement_stage_aging: {
+        Args: never
+        Returns: {
+          breached: boolean
+          case_id: string
+          case_no: string
+          entered_at: string
+          estimated_cost: number
+          hours_in_stage: number
+          sla_hours: number
+          stage: Database["public"]["Enums"]["procurement_stage"]
+          stage_label: string
+          title: string
+        }[]
       }
       procurement_stage_counts: {
         Args: never
@@ -2511,6 +2913,10 @@ export type Database = {
           stage: Database["public"]["Enums"]["procurement_stage"]
           total_value: number
         }[]
+      }
+      procurement_sync_case_cost: {
+        Args: { _case_id: string }
+        Returns: undefined
       }
       procurement_transition_allowed: {
         Args: {

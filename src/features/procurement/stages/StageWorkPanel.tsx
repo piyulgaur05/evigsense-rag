@@ -1,3 +1,4 @@
+import { RequisitionPanel } from "./RequisitionPanel";
 import { STAGE_BRIEF } from "../lib/stages";
 import { formatDate, formatMoney } from "../lib/format";
 import type { CaseListItem, ProcurementStage, StageConfig } from "../types";
@@ -24,13 +25,16 @@ export function StageWorkPanel({
   config,
   procurementCase,
   isCurrent,
+  canEditRequisition,
 }: {
   stage: ProcurementStage;
   config: StageConfig | undefined;
   procurementCase: CaseListItem;
   isCurrent: boolean;
+  canEditRequisition: boolean;
 }) {
   return (
+    <div className="space-y-6">
     <section className="rounded-lg border border-border bg-card">
       <header className="border-b border-border px-5 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -59,5 +63,13 @@ export function StageWorkPanel({
         />
       </div>
     </section>
+
+    {/* The requisition is the one record every stage refers back to. */}
+    <RequisitionPanel
+      stage={stage}
+      procurementCase={procurementCase}
+      canEdit={canEditRequisition}
+    />
+    </div>
   );
 }

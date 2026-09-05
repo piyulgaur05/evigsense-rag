@@ -49,8 +49,30 @@ SELECT case_no, stage, status_label FROM public.procurement_cases WHERE id = (SE
 \echo '--- actions the requester sees at draft ---'
 SELECT code, label FROM public.procurement_available_actions((SELECT case_id FROM probe));
 
-\echo '--- draft.submit then mpr.submit ---'
+\echo '--- draft.submit ---'
 SELECT stage, status_label FROM public.procurement_record_decision((SELECT case_id FROM probe), 'draft.submit');
+
+\echo '--- an incomplete requisition must not reach finance ---'
+SELECT public.procurement_requisition_gaps((SELECT case_id FROM probe)) AS gaps;
+DO $$
+BEGIN
+  PERFORM public.procurement_record_decision((SELECT case_id FROM probe), 'mpr.submit');
+  RAISE EXCEPTION 'FAIL: an incomplete requisition reached finance';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS: stage guard held (%)', SQLERRM;
+END $$;
+
+\echo '--- fill the requisition in, then mpr.submit ---'
+INSERT INTO public.procurement_requisitions (case_id, required_by, cost_source, manual_cost, created_by)
+SELECT case_id, current_date + 45, 'boq', 0, auth.uid() FROM probe;
+
+INSERT INTO public.procurement_boq_lines
+  (case_id, line_no, item_name, quantity, unit, estimated_rate, created_by)
+SELECT case_id, 1, 'Spectrum analyser, 26.5 GHz', 1, 'Nos.', 1850000, auth.uid() FROM probe;
+
+-- The case value follows the bill rather than whatever was inserted above.
+SELECT estimated_cost FROM public.procurement_cases WHERE id = (SELECT case_id FROM probe);
+
 SELECT stage, status_label FROM public.procurement_record_decision((SELECT case_id FROM probe), 'mpr.submit');
 
 \echo '--- requester must not be able to clear the budget ---'

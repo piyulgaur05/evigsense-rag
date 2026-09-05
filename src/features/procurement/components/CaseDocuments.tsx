@@ -18,8 +18,10 @@ import type { ProcurementStage } from "../types";
 const INGEST_LABEL: Record<string, string> = {
   queued: "queued",
   processing: "reading",
+  // The pipeline's finished state is 'active'; 'completed' is the queue's own.
+  active: "indexed",
   completed: "indexed",
-  failed: "failed",
+  failed: "could not be read",
 };
 
 /**

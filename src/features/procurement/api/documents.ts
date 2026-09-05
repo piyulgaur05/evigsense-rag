@@ -75,7 +75,7 @@ export async function attachDocumentToCase(args: {
   docType: string;
   file: File;
   userId: string;
-}): Promise<void> {
+}): Promise<string> {
   const extension = args.file.name.split(".").pop() ?? "bin";
   const storagePath = `${args.userId}/${Date.now()}_${crypto.randomUUID()}.${extension}`;
 
@@ -113,6 +113,10 @@ export async function attachDocumentToCase(args: {
     .from("document_processing_queue")
     .insert({ document_id: document.id, user_id: args.userId, status: "pending" });
   await supabase.functions.invoke("process-queue").catch(() => undefined);
+
+  // The id is what lets a caller go on to do something with the file it just
+  // attached -- reading a bill of quantities out of it, for one.
+  return document.id;
 }
 
 export async function detachCaseDocument(linkId: string): Promise<void> {
