@@ -53,6 +53,14 @@
     --destructive: 0 72% 46%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Settled — a requirement that is met, paired with --destructive for one
+       that is not. Never carries meaning on its own: every use sits beside an
+       icon and a word, because red-against-green is the one pair a colourblind
+       reader cannot separate. Distinct from --signal, which stays reserved for
+       what the machine found. */
+    --ok: 152 58% 30%;
+    --ok-foreground: 0 0% 100%;
+
     --border: 220 16% 87%;
     --input: 220 16% 84%;
     --ring: 220 85% 45%;
@@ -113,6 +121,9 @@
 
     --destructive: 0 72% 56%;
     --destructive-foreground: 0 0% 100%;
+
+    --ok: 152 52% 48%;
+    --ok-foreground: 222 47% 8%;
 
     --border: 222 25% 18%;
     --input: 222 25% 22%;

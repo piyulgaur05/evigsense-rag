@@ -1,4 +1,6 @@
 import { RequisitionPanel } from "./RequisitionPanel";
+import { TecPanel } from "./TecPanel";
+import { TenderPanel } from "./TenderPanel";
 import { STAGE_BRIEF } from "../lib/stages";
 import { formatDate, formatMoney } from "../lib/format";
 import type { CaseListItem, ProcurementStage, StageConfig } from "../types";
@@ -14,11 +16,29 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+type StagePanelProps = {
+  procurementCase: CaseListItem;
+  stage: ProcurementStage;
+  /** Lets a stage panel point the case assistant at one bidder's papers. */
+  onAskAbout?: (bidderId: string, vendorName: string) => void;
+};
+
+/**
+ * Stage-specific working, registered per stage as each slice lands.
+ *
+ * Absent is the normal case: twelve of the fourteen stages still have only the
+ * summary above and the requisition below, and a stage that has nothing of its
+ * own should show nothing of its own rather than an empty frame promising a
+ * form that does not exist.
+ */
+const STAGE_PANELS: Partial<Record<ProcurementStage, React.ComponentType<StagePanelProps>>> = {
+  tender: TenderPanel,
+  tec: TecPanel,
+};
+
 /**
  * The centre of the case file: what this stage decides, and what the case
- * knows so far. Stage-specific working — the bill of quantities, the
- * evaluation grid, the committee roster — is registered here as each slice
- * lands.
+ * knows so far.
  */
 export function StageWorkPanel({
   stage,
@@ -26,13 +46,17 @@ export function StageWorkPanel({
   procurementCase,
   isCurrent,
   canEditRequisition,
+  onAskAbout,
 }: {
   stage: ProcurementStage;
   config: StageConfig | undefined;
   procurementCase: CaseListItem;
   isCurrent: boolean;
   canEditRequisition: boolean;
+  onAskAbout?: (bidderId: string, vendorName: string) => void;
 }) {
+  const StagePanel = STAGE_PANELS[stage];
+
   return (
     <div className="space-y-6">
     <section className="rounded-lg border border-border bg-card">
@@ -64,7 +88,13 @@ export function StageWorkPanel({
       </div>
     </section>
 
-    {/* The requisition is the one record every stage refers back to. */}
+    {/* This desk's own working, where there is any. */}
+    {StagePanel && (
+      <StagePanel procurementCase={procurementCase} stage={stage} onAskAbout={onAskAbout} />
+    )}
+
+    {/* The requisition is the one record every stage refers back to, so it
+        stays last: what this desk is doing, then what it is doing it against. */}
     <RequisitionPanel
       stage={stage}
       procurementCase={procurementCase}

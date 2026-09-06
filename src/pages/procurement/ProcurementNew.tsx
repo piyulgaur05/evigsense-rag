@@ -3,8 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { PortalLayout } from "@/features/procurement/components/PortalLayout";
 import { RequisitionEditor } from "@/features/procurement/components/RequisitionEditor";
 import { Button } from "@/components/ui/button";
@@ -134,12 +135,27 @@ export default function ProcurementNew() {
             <RequisitionEditor procurementCase={draft} />
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-5 py-4">
-            <div>
-              <p className="text-[13px] font-medium text-foreground">Ready to raise it?</p>
-              <p className="text-[13px] text-muted-foreground">
+          <div
+            className={cn(
+              "mt-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-5 py-4",
+              blocked ? "border-destructive/40" : "border-ok/40",
+            )}
+          >
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                {blocked ? (
+                  <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0 text-ok" />
+                )}
+                {blocked ? "Not ready yet" : "Ready to raise it"}
+              </p>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
                 {blocked
-                  ? "Finish the items listed above first."
+                  ? // Naming the outstanding items beats "finish the items above":
+                    // the checklist is several screens up by the time anybody
+                    // reaches this button.
+                    `Still needed — ${(gaps ?? []).join(", ").toLowerCase()}.`
                   : "It goes straight to the finance desk for a budget decision."}
               </p>
             </div>

@@ -54,10 +54,18 @@ const BUDGET_HEADS = [
   { name: "Workshop Machinery", allocated: 15000000, department: "Mechanical Engineering" },
 ];
 
+// msme_category matches the CHECK on procurement_vendors, which stores the
+// lowercase tokens the rest of the schema uses. insertWhenPresent only swallows
+// a missing table, so a capitalised value here fails the whole seed rather than
+// being skipped quietly.
 const VENDORS = [
-  { name: "Meridian Instruments Pvt Ltd", registration_id: "MIPL-0912", msme_category: "Small", email: "sales@meridian-instruments.example", phone: "+91 80 4000 1201" },
-  { name: "Trident Systems India", registration_id: "TSI-4471", msme_category: "Medium", email: "bids@trident-systems.example", phone: "+91 22 6100 8890" },
-  { name: "Kaveri Engineering Works", registration_id: "KEW-2038", msme_category: "Micro", email: "tenders@kaveri-works.example", phone: "+91 44 2851 3377" },
+  { name: "Meridian Instruments Pvt Ltd", registration_id: "MIPL-0912", msme_category: "small", email: "sales@meridian-instruments.example", phone: "+91 80 4000 1201", active: true },
+  { name: "Trident Systems India", registration_id: "TSI-4471", msme_category: "medium", email: "bids@trident-systems.example", phone: "+91 22 6100 8890", active: true },
+  { name: "Kaveri Engineering Works", registration_id: "KEW-2038", msme_category: "micro", email: "tenders@kaveri-works.example", phone: "+91 44 2851 3377", active: true },
+  // Retired rather than barred, so the register has one of each state to show.
+  // Every row states `active`: PostgREST refuses a bulk insert whose objects do
+  // not share a key set, so one row carrying it and three not is a 400.
+  { name: "Anmol Traders", registration_id: "ANT-1150", msme_category: "small", email: "contact@anmol-traders.example", phone: "+91 33 2287 4416", active: false },
 ];
 
 function readEnvFile(file) {
@@ -213,7 +221,7 @@ async function main() {
     summary.push({ email, role, user: userState });
   }
 
-  // Budget heads and vendors land with the sourcing slice; skip until then.
+  // Budget heads land with the requisition slice, vendors with the tender one.
   await insertWhenPresent(
     base,
     headers,

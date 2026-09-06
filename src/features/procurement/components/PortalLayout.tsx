@@ -54,6 +54,11 @@ export function PortalLayout({ children }: { children: ReactNode }) {
     { title: "Waiting on you", to: "/procurement/inbox", end: false },
     { title: "Register", to: "/procurement/register", end: false },
     { title: "Insights", to: "/procurement/insights", end: false },
+    // Master data is administration, not a desk, so it only appears for the
+    // permission that can actually write it.
+    ...(can("master_data.manage")
+      ? [{ title: "Master data", to: "/procurement/admin", end: false }]
+      : []),
   ];
 
   const queues = (portal?.queues ?? [])

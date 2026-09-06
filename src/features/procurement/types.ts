@@ -71,3 +71,100 @@ export type CaseFilters = {
 };
 
 export type { QueueKey } from "./lib/portals";
+
+// ===== The tender =====
+
+export type Vendor = Tables["procurement_vendors"]["Row"];
+export type VendorInsert = Tables["procurement_vendors"]["Insert"];
+export type Tender = Tables["procurement_tenders"]["Row"];
+export type TenderItem = Tables["procurement_tender_items"]["Row"];
+export type TenderInvitee = Tables["procurement_tender_invitees"]["Row"];
+export type Bidder = Tables["procurement_bidders"]["Row"];
+export type Corrigendum = Tables["procurement_corrigenda"]["Row"];
+export type CorrigendumNotice = Tables["procurement_corrigendum_notices"]["Row"];
+
+export type TenderSummary =
+  Database["public"]["Functions"]["procurement_tender_summary"]["Returns"][number];
+
+/**
+ * `mode` and `status` are text columns with CHECK constraints rather than
+ * enums, so the generated types give them back as bare strings. Narrowing them
+ * here is what stops a typo reaching the database and coming back as a
+ * constraint violation the user cannot act on.
+ */
+export type TenderMode = "open" | "limited" | "single" | "gem" | "eprocurement";
+export type TenderStatus =
+  | "draft"
+  | "ready"
+  | "floated"
+  | "bidding_open"
+  | "bidding_closed"
+  | "evaluation";
+export type BidderStatus = "received" | "withdrawn" | "rejected" | "disqualified";
+export type EmdStatus = "not_received" | "received" | "exempt" | "returned" | "forfeited";
+export type MsmeCategory = "micro" | "small" | "medium" | "none";
+export type CorrigendumCategory = "schedule" | "technical" | "commercial" | "administrative";
+
+/** What the tender form edits. The lifecycle columns are the engine's. */
+export type TenderPatch = Partial<
+  Omit<
+    Tables["procurement_tenders"]["Insert"],
+    | "id"
+    | "case_id"
+    | "created_by"
+    | "created_at"
+    | "updated_at"
+    | "status"
+    | "floated_at"
+    | "floated_by"
+    | "bidding_closed_at"
+    | "bidding_closed_by"
+    | "estimated_value"
+    | "notice_snapshot"
+    | "notice_issued_at"
+  >
+>;
+
+export type BidderPatch = Partial<
+  Omit<Tables["procurement_bidders"]["Insert"], "id" | "case_id" | "created_by" | "bid_amount_gross">
+> & { tender_id: string; vendor_id: string };
+
+/** A bidder as the roster shows it — the firm's name comes from the register. */
+export type BidderWithVendor = Bidder & {
+  vendor: Pick<Vendor, "id" | "name" | "msme_category" | "blacklisted"> | null;
+};
+
+export type InviteeWithVendor = TenderInvitee & {
+  vendor: Pick<Vendor, "id" | "name"> | null;
+};
+
+export type CorrigendumWithNotices = Corrigendum & {
+  notices: (Pick<CorrigendumNotice, "id" | "vendor_id" | "channel" | "notified_at"> & {
+    vendor: Pick<Vendor, "id" | "name"> | null;
+  })[];
+};
+
+// ===== The technical evaluation committee =====
+
+export type TecChecklistItem = Tables["procurement_tec_checklist"]["Row"];
+export type TecChecklistItemKey =
+  | "specs_match_requisition"
+  | "mandatory_documents"
+  | "delivery_feasible"
+  | "eligibility_verified";
+export type TecChecklistStatus = "pending" | "pass" | "fail" | "clarify";
+
+export type TecEvaluation = Tables["procurement_tec_evaluations"]["Row"];
+export type TecComplianceStatus = "pending" | "compliant" | "non_compliant";
+
+export type TecConsensusRow =
+  Database["public"]["Functions"]["procurement_tec_case_consensus"]["Returns"][number];
+
+export type TecAiSuggestion = Tables["procurement_tec_ai_suggestions"]["Row"];
+export type TecAiEvidenceFinding = "met" | "not_met" | "unclear";
+export type TecAiEvidence = {
+  requirement: string;
+  finding: TecAiEvidenceFinding;
+  detail: string | null;
+  source: string | null;
+};

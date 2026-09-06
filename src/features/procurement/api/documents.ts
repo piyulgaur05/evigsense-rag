@@ -9,7 +9,11 @@ export type CaseDocument = {
   stage: ProcurementStage;
   doc_type: string;
   is_generated: boolean;
+  /** Set when the paper came in with one firm's bid rather than with the case. */
+  bidder_id: string | null;
   version: number;
+  /** Only the uploader (or a procurement admin) may detach or relabel a row. */
+  uploaded_by: string;
   created_at: string;
   document: {
     id: string;
@@ -20,6 +24,33 @@ export type CaseDocument = {
     storage_path: string;
     summary: string | null;
   } | null;
+};
+
+/**
+ * What each desk is normally attaching, so the type never has to be chosen
+ * before a file can go on the case.
+ *
+ * The taxonomy is worth keeping — a file that says "Comparative statement" is
+ * more use to the next reader than one that says "scan_004.pdf" — but making it
+ * a decision *in front of* the attach button turned a one-click act into a
+ * twenty-two-item menu. Attaching now guesses from the stage the case is at and
+ * the row can be relabelled afterwards.
+ */
+export const STAGE_DEFAULT_DOC_TYPE: Record<ProcurementStage, string> = {
+  draft: "Requisition",
+  mpr: "Requisition",
+  finance: "Budget sanction",
+  tender: "Tender document",
+  tec: "Technical evaluation report",
+  commercial: "Commercial bid opening",
+  cst: "Comparative statement",
+  dpc: "Committee resolution",
+  pnc: "Negotiation minutes",
+  purchase_proposal: "Purchase proposal",
+  purchase_order: "Purchase order",
+  goods_receipt: "Goods receipt note",
+  payment_recommendation: "Payment recommendation",
+  closed: "Other",
 };
 
 /** The paperwork a public purchase file is expected to carry. */
@@ -52,7 +83,7 @@ export async function fetchCaseDocuments(caseId: string): Promise<CaseDocument[]
   const { data, error } = await supabase
     .from("procurement_case_documents")
     .select(
-      "id, case_id, document_id, stage, doc_type, is_generated, version, created_at," +
+      "id, case_id, document_id, stage, doc_type, is_generated, bidder_id, version, uploaded_by, created_at," +
         " document:documents(id, title, original_filename, mime_type, status, storage_path, summary)",
     )
     .eq("case_id", caseId)
@@ -75,6 +106,20 @@ export async function attachDocumentToCase(args: {
   docType: string;
   file: File;
   userId: string;
+  /**
+   * Set for paperwork the portal produced rather than a person uploaded — a
+   * notice inviting tender, a corrigendum. It rides exactly the same pipeline,
+   * which is the point: a generated notice is OCR'd, embedded and answerable by
+   * the case assistant like any other document on the file.
+   */
+  isGenerated?: boolean;
+  /**
+   * Whose bid this arrived with. A bid's certificates are ordinary case
+   * documents — same bucket, same ingest, same embeddings — and this is the
+   * only thing that distinguishes them, so the evaluation can later ask what
+   * one firm actually sent instead of reading the whole case.
+   */
+  bidderId?: string | null;
 }): Promise<string> {
   const extension = args.file.name.split(".").pop() ?? "bin";
   const storagePath = `${args.userId}/${Date.now()}_${crypto.randomUUID()}.${extension}`;
@@ -103,6 +148,8 @@ export async function attachDocumentToCase(args: {
     document_id: document.id,
     stage: args.stage,
     doc_type: args.docType,
+    is_generated: args.isGenerated ?? false,
+    bidder_id: args.bidderId ?? null,
     uploaded_by: args.userId,
   });
   if (linkError) throw new Error(linkError.message);
@@ -121,6 +168,24 @@ export async function attachDocumentToCase(args: {
 
 export async function detachCaseDocument(linkId: string): Promise<void> {
   const { error } = await supabase.from("procurement_case_documents").delete().eq("id", linkId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Relabels a document already on the case.
+ *
+ * Only the link row changes — the file, its ingest and its embeddings are
+ * untouched, because the type is a note about the part the paper plays in this
+ * case and not a property of the document itself.
+ */
+export async function updateCaseDocumentType(args: {
+  linkId: string;
+  docType: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from("procurement_case_documents")
+    .update({ doc_type: args.docType })
+    .eq("id", args.linkId);
   if (error) throw new Error(error.message);
 }
 

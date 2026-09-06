@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { PortalLayout } from "@/features/procurement/components/PortalLayout";
@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { CaseAssistant } from "@/features/procurement/components/CaseAssistant";
 import { CaseTimeline } from "@/features/procurement/components/CaseTimeline";
 import { CaseDocuments } from "@/features/procurement/components/CaseDocuments";
+import { CaseSignatures } from "@/features/procurement/components/CaseSignatures";
 import { ClarificationThread } from "@/features/procurement/components/ClarificationThread";
 import { StageActionBar } from "@/features/procurement/components/StageActionBar";
 import { StageBadge } from "@/features/procurement/components/StageBadge";
@@ -26,12 +27,37 @@ export default function ProcurementCase() {
   const { data: procurementCase, isLoading, error } = useCase(caseNo);
   const { data: stages } = useStageConfig();
   const { data: history } = useStageHistory(procurementCase?.id);
+  /**
+   * Which stage the reader is looking at. `null` means "whichever one the case
+   * is at" — the stage index only pins it when somebody deliberately clicks
+   * another one.
+   *
+   * The previous version copied the case's stage into state on first load and
+   * then never let go, so a decision that moved the case left the page half
+   * updated: the header and the index said Tender while the work panel still
+   * showed Finance and the action bar had vanished, because `isCurrent` had
+   * gone false. It looked exactly like a page that had not refreshed, and only
+   * a reload cleared it. Following the move is the whole point — you took the
+   * decision, you want to see where it went.
+   */
   const [selected, setSelected] = useState<ProcurementStage | null>(null);
+  const lastStage = useRef<ProcurementStage | null>(null);
 
-  // Follow the case when it moves, unless the reader has picked a stage.
+  /**
+   * Which bidder the assistant is reading, if any. Set from the tender panel's
+   * roster, cleared from the assistant itself.
+   */
+  const [askScope, setAskScope] = useState<{ bidderId: string; vendorName: string } | null>(null);
+
   useEffect(() => {
-    if (procurementCase && selected === null) setSelected(procurementCase.stage);
-  }, [procurementCase, selected]);
+    if (!procurementCase) return;
+    if (lastStage.current !== procurementCase.stage) {
+      lastStage.current = procurementCase.stage;
+      // The case moved (or this is the first load). Drop any manual pick and
+      // follow it.
+      setSelected(null);
+    }
+  }, [procurementCase]);
 
   if (isLoading) {
     return (
@@ -142,6 +168,12 @@ export default function ProcurementCase() {
               procurementCase={procurementCase}
               isCurrent={isCurrent}
               canEditRequisition={canEditRequisition}
+              onAskAbout={(bidderId, vendorName) => {
+                setAskScope({ bidderId, vendorName });
+                document
+                  .getElementById("case-assistant")
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
             />
 
             {isCurrent && procurementCase.case_status === "open" && (
@@ -165,7 +197,13 @@ export default function ProcurementCase() {
               stage={activeStage}
               canUpload={can("upload_docs")}
             />
-            <CaseAssistant caseId={procurementCase.id} caseNo={procurementCase.case_no} />
+            <CaseSignatures caseId={procurementCase.id} />
+            <CaseAssistant
+              caseId={procurementCase.id}
+              caseNo={procurementCase.case_no}
+              scope={askScope}
+              onClearScope={() => setAskScope(null)}
+            />
             <ClarificationThread caseId={procurementCase.id} stage={procurementCase.stage} />
             <section className="rounded-lg border border-border bg-card">
               <header className="border-b border-border px-5 py-4">
@@ -181,7 +219,13 @@ export default function ProcurementCase() {
           </aside>
 
           <div className="space-y-6 xl:hidden lg:col-start-2">
-            <CaseAssistant caseId={procurementCase.id} caseNo={procurementCase.case_no} />
+            <CaseSignatures caseId={procurementCase.id} />
+            <CaseAssistant
+              caseId={procurementCase.id}
+              caseNo={procurementCase.case_no}
+              scope={askScope}
+              onClearScope={() => setAskScope(null)}
+            />
             <ClarificationThread caseId={procurementCase.id} stage={procurementCase.stage} />
             <section className="rounded-lg border border-border bg-card">
               <header className="border-b border-border px-5 py-4">

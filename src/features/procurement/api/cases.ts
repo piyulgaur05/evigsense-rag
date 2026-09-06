@@ -25,6 +25,20 @@ export async function fetchStageConfig(): Promise<StageConfig[]> {
   );
 }
 
+/**
+ * Every move in the workflow, not just the ones available on a case.
+ *
+ * `procurement_available_actions(case)` answers "what can I do here"; this
+ * answers "what is this code called", which is what a reader of a finished
+ * trail needs — the action that was taken is usually one they could not have
+ * taken themselves.
+ */
+export async function fetchStageActions(): Promise<StageAction[]> {
+  return unwrap(
+    await supabase.from("procurement_stage_actions").select("*").order("sort_order"),
+  );
+}
+
 export async function fetchCases(filters: CaseFilters = {}): Promise<CaseListItem[]> {
   let query = supabase.from("procurement_cases").select(CASE_COLUMNS);
 

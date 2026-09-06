@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Loader2, Save } from "lucide-react";
+import { Check, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,10 @@ import { BoqImport } from "./BoqImport";
 import { CaseAssistant } from "./CaseAssistant";
 import { boqIssues, boqTotal } from "../lib/boq";
 import { CaseDocuments } from "./CaseDocuments";
+import { ReadinessChecklist, RequiredLabel } from "./ReadinessChecklist";
+// Section, LookupField and the "none" sentinel are shared with the tender form.
+import { FormSection as Section, LookupField, NONE, pickLookup as pick } from "./FormSection";
+import { requiredRing, requisitionChecks, stepOutstanding } from "../lib/requisitionChecks";
 import type { BoqDraftLine } from "../api/requisition";
 import type { CaseListItem } from "../types";
 
@@ -48,67 +53,6 @@ type Details = {
   manualCost: number;
   deliveryNote: string;
 };
-
-const NONE = "none";
-const pick = (value: string) => (value === NONE || value === "" ? null : value);
-
-function Section({
-  label,
-  title,
-  hint,
-  children,
-}: {
-  label: string;
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="border-b border-border px-5 py-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </p>
-        <h2 className="mt-1 text-[15px] font-semibold text-foreground">{title}</h2>
-        {hint && <p className="mt-1 max-w-2xl text-[13px] text-muted-foreground">{hint}</p>}
-      </header>
-      <div className="px-5 py-5">{children}</div>
-    </section>
-  );
-}
-
-function LookupField({
-  label,
-  value,
-  options,
-  placeholder,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { id: string; name: string }[];
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div>
-      <Label className="text-[13px]">{label}</Label>
-      <Select value={value || NONE} onValueChange={onChange}>
-        <SelectTrigger className="mt-1.5">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>Not stated</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.id} value={option.id}>
-              {option.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -217,6 +161,22 @@ export function RequisitionEditor({
     : null;
   const shortfall = headroom !== null && effectiveCost > headroom ? effectiveCost - headroom : 0;
 
+  // Driven by the unsaved form, not by `gaps`, so the checklist and the field
+  // rings move as the requester types. `gaps` is still fetched and still comes
+  // from the database — it enables the raise button on the page above, and the
+  // checklist falls back to it when the two disagree, which is what an unsaved
+  // edit (or a drifted client rule) looks like from here.
+  const checks = useMemo(
+    () =>
+      requisitionChecks({
+        title: details?.title ?? "",
+        departmentId: details?.departmentId ?? "",
+        requiredBy: details?.requiredBy ?? "",
+        effectiveCost,
+      }),
+    [details?.title, details?.departmentId, details?.requiredBy, effectiveCost],
+  );
+
   if (!details) {
     return (
       <div className="flex items-center justify-center py-10">
@@ -321,44 +281,22 @@ export function RequisitionEditor({
 
   return (
     <div className="space-y-4">
-      {gaps && gaps.length > 0 ? (
-        <div className="rounded-lg border border-border bg-card px-5 py-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <div>
-              <p className="text-[13px] font-medium text-foreground">
-                Still needed before this can go to finance
-              </p>
-              <ul className="mt-2 space-y-1">
-                {gaps.map((gap) => (
-                  <li key={gap} className="text-[13px] text-muted-foreground">
-                    {gap}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-3 text-[13px] text-foreground">
-          <Check className="h-4 w-4 text-primary" />
-          This requisition is complete and can be sent for finance clearance.
-        </div>
-      )}
+      <ReadinessChecklist checks={checks} serverGaps={gaps ?? undefined} />
 
       <Section
         label="step 1"
         title="What is needed"
         hint="Say it the way a colleague in another department would understand it."
+        outstanding={stepOutstanding(checks, 1)}
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="req-title" className="text-[13px]">
+            <RequiredLabel htmlFor="req-title" done={details.title.trim().length > 0}>
               Requisition title
-            </Label>
+            </RequiredLabel>
             <Input
               id="req-title"
-              className="mt-1.5"
+              className={cn("mt-1.5", requiredRing(details.title.trim().length > 0))}
               value={details.title}
               placeholder="Spectrum analyser, 26.5 GHz, for the RF laboratory"
               onChange={(e) => set("title", e.target.value)}
@@ -381,10 +319,12 @@ export function RequisitionEditor({
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <LookupField
+              id="req-department"
               label="Department"
               value={details.departmentId}
               options={departments ?? []}
               placeholder="Pick a department"
+              required
               onChange={(value) => set("departmentId", value === NONE ? "" : value)}
             />
             <LookupField
@@ -423,13 +363,13 @@ export function RequisitionEditor({
               onChange={(value) => set("warehouseId", value === NONE ? "" : value)}
             />
             <div>
-              <Label htmlFor="req-required-by" className="text-[13px]">
+              <RequiredLabel htmlFor="req-required-by" done={Boolean(details.requiredBy)}>
                 Needed by
-              </Label>
+              </RequiredLabel>
               <Input
                 id="req-required-by"
                 type="date"
-                className="mt-1.5"
+                className={cn("mt-1.5", requiredRing(Boolean(details.requiredBy)))}
                 value={details.requiredBy}
                 onChange={(e) => set("requiredBy", e.target.value)}
               />
@@ -475,6 +415,7 @@ export function RequisitionEditor({
         label="step 3"
         title="The money"
         hint="The figure finance decides against, and the head it is charged to."
+        outstanding={stepOutstanding(checks, 3)}
       >
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -548,16 +489,20 @@ export function RequisitionEditor({
             </div>
           </div>
 
+          {/* Whenever the value check is outstanding this input is on screen:
+              deriving from the bill needs a priced line, and a priced line
+              makes the total non-zero. So the checklist's jump to `req-cost`
+              can never land on a field that is not rendered. */}
           {(details.costSource === "manual" || !canDeriveFromBill) && (
             <div className="max-w-xs">
-              <Label htmlFor="req-cost" className="text-[13px]">
+              <RequiredLabel htmlFor="req-cost" done={effectiveCost > 0}>
                 Estimated value
-              </Label>
+              </RequiredLabel>
               <Input
                 id="req-cost"
                 type="number"
                 min={0}
-                className="mt-1.5 tabular-nums"
+                className={cn("mt-1.5 tabular-nums", requiredRing(effectiveCost > 0))}
                 value={details.manualCost || ""}
                 placeholder="0"
                 onChange={(e) => set("manualCost", Number(e.target.value))}
@@ -584,9 +529,9 @@ export function RequisitionEditor({
 
       {showDocuments && (
         <Section
-          label="step 4"
+          label="step 4 · optional"
           title="Supporting documents"
-          hint="Optional. Attach the estimate, the drawings or the specification if you have them — everything here is read, indexed and can be asked about below."
+          hint="The estimate, the drawings, the specification — whatever you already have. Nothing here blocks the requisition."
         >
           <CaseDocuments
             caseId={caseId}
@@ -594,12 +539,6 @@ export function RequisitionEditor({
             stage={procurementCase.stage}
             canUpload
           />
-          {documents && documents.length === 0 && (
-            <p className="mt-3 text-[13px] text-muted-foreground">
-              Nothing attached yet. You can still raise the requisition — finance will ask if they
-              need something.
-            </p>
-          )}
         </Section>
       )}
 

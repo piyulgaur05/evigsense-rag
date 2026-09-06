@@ -25,11 +25,19 @@ export async function askAboutCase(args: {
   caseId: string;
   query: string;
   conversationId?: string | null;
+  /**
+   * Narrows retrieval to one firm's own submission. Without it, a question
+   * about whether a bidder holds some certificate is answered from whichever
+   * bidder's papers matched best — which is a confidently wrong answer rather
+   * than a missing one.
+   */
+  bidderId?: string | null;
 }): Promise<CaseAnswer> {
   const { data, error } = await supabase.functions.invoke("rag-assistant", {
     body: {
       query: args.query,
       caseId: args.caseId,
+      bidderId: args.bidderId || undefined,
       conversationId: args.conversationId || undefined,
     },
   });

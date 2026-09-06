@@ -286,6 +286,69 @@ Seeded procurement logins are `requester@`, `finance@`, `tender@`, `tec.chair@`,
 same seed password as the other accounts. `admin@jyoma.ai` also holds
 `proc_admin`.
 
+## Chandra OCR on this machine (x86_64 CUDA)
+
+The current split on the dev box: **chat, translation and embeddings are remote**
+(vLLM behind ngrok), **only OCR runs locally**, so the whole GPU belongs to
+Chandra. `docker/docker-compose.ocr.yml` serves it plus the relay that turns PDF
+pages into images:
+
+| Port | Service | Model | App variable |
+|------|---------|-------|--------------|
+| 8102 | `vllm-ocr` | `datalab-to/chandra-ocr-2` | `OCR_BASE_URL=http://vllm-ocr:8000/v1` |
+| 8105 | `chandra-relay` | — (CPU, rasterizes PDFs) | `CHANDRA_BASE_URL=http://chandra-relay:8001` |
+
+```sh
+cd docker
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.ocr.yml up -d
+```
+
+Remote endpoints for the other roles (already in `docker/.env`):
+
+```sh
+CHAT_BASE_URL=https://evigsense.ngrok.dev/v1          # Qwen/Qwen3.5-35B-A3B
+TRANSLATE_BASE_URL=https://evigsense.ngrok.dev/v1
+EMBED_BASE_URL=https://evigsense-ai-service.ngrok.app/v1   # Qwen/Qwen3-VL-Embedding-2B
+EMBED_DIMENSIONS=                                     # server has no MRL; truncated client-side
+RERANK_MODEL=                                         # that host serves no /v1/rerank -> stage off
+```
+
+**VRAM — measured on an 8 GB RTX 4070 Laptop.** `chandra-ocr-2` is a 5.3B
+Qwen3.5-VL hybrid: 10.6 GB at bf16, which does not fit, so `VLLM_QUANTIZATION=fp8`
+is mandatory (weights land at **5.31 GiB**). Three settings had to come down
+together before the engine would start:
+
+- `VLLM_CUDA_OCR_MEM=0.85`. Windows/WSL keeps ~1.1 GB, so vLLM sees 6.89 of the
+  8 GiB; 0.92 aborts with "Free memory on device cuda:0 (6.89/8.0 GiB) … is less
+  than desired GPU memory utilization".
+- `VLLM_CUDA_OCR_MAX_PIXELS=2359296`, passed as `--mm-processor-kwargs`. Chandra's
+  processor resizes almost nothing (`longest_edge` 16.7M px), so a 200-DPI A4 page
+  is **3796 image tokens** and vLLM profiles startup memory against an image of
+  that maximum size. Uncapped, the profiling peak left "Available KV cache memory:
+  **-0.45 GiB**" and the engine refused to start. Capped, the page is 2280 tokens
+  and KV cache settles at **0.85 GiB / 21,299 tokens**.
+- `VLLM_CUDA_OCR_BATCH_TOKENS=4096`, which shrinks the prefill activation peak.
+
+`VLLM_CUDA_OCR_EAGER` is deliberately **empty**. Disabling CUDA graphs looked like
+an obvious way to save memory, but capture costs only 0.01 GiB here and eager mode
+runs decode roughly 4× slower — Chandra emits thousands of tokens per page, so
+per-token launch overhead dominates. Together with `VLLM_CUDA_OCR_SEQS=2` (decode
+is bandwidth-bound, so a second concurrent page is nearly free) a scanned page went
+from ~117 s to **26–30 s**. That margin matters: `process-queue` sends scanned PDFs
+to `extract-document-text` five pages at a time, and the edge runtime kills a worker
+at 400 s of isolate lifetime — at 117 s/page a 5-page chunk overran it and the
+document sat at "Extracting text…" forever with its OCR result thrown away.
+
+The relay mirrors the pixel cap in `OCR_MAX_IMAGE_PIXELS`, so the downscale happens
+once on the CPU with a Lanczos resampler rather than inside the model's processor.
+Only 8 of the 32 layers are full attention (the rest are linear/mamba with constant
+state), so 12k context is affordable; `OCR_MAX_TOKENS=8192` leaves room for the
+page image inside it. Steady state is ~7.1 GB of the 8 GB card, and a single-page
+PDF round-trips through the relay in **~15 s**.
+
+Do **not** run `docker-compose.vllm.yml` (embed/rerank) alongside this on an 8 GB
+card — those want ~5 GB of their own.
+
 ## Model servers on a CUDA host (x86_64)
 
 `docker/docker-compose.vllm.yml` runs the two roles LM Studio cannot serve, and

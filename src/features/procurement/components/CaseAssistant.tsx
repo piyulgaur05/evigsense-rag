@@ -24,7 +24,25 @@ const STARTERS = [
  * pointed at this case. Retrieval is scoped in the database to the documents
  * on the case, and only for people the case policies let read it.
  */
-export function CaseAssistant({ caseId, caseNo }: { caseId: string; caseNo: string }) {
+export function CaseAssistant({
+  caseId,
+  caseNo,
+  scope,
+  onClearScope,
+}: {
+  caseId: string;
+  caseNo: string;
+  /**
+   * Narrows retrieval to one bidder's own submission.
+   *
+   * Across the whole case, "does this firm hold a valid licence?" happily
+   * retrieves the licence a *different* bidder sent and answers yes. Scoped,
+   * an absent certificate looks absent — which on a qualification question is
+   * the difference between a gap and a wrong answer.
+   */
+  scope?: { bidderId: string; vendorName: string } | null;
+  onClearScope?: () => void;
+}) {
   const { data: readiness } = useCaseDocumentReadiness(caseId);
   const ask = useAskAboutCase();
   const [question, setQuestion] = useState("");
@@ -36,7 +54,12 @@ export function CaseAssistant({ caseId, caseNo }: { caseId: string; caseNo: stri
     if (!query || ask.isPending) return;
     setQuestion("");
     try {
-      const result = await ask.mutateAsync({ caseId, query, conversationId });
+      const result = await ask.mutateAsync({
+        caseId,
+        query,
+        conversationId,
+        bidderId: scope?.bidderId ?? null,
+      });
       setConversationId(result.conversationId);
       setTurns((current) => [
         ...current,
@@ -51,12 +74,29 @@ export function CaseAssistant({ caseId, caseNo }: { caseId: string; caseNo: stri
   const stillReading = readiness?.still_reading ?? 0;
 
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section id="case-assistant" className="rounded-lg border border-border bg-card">
       <header className="border-b border-border px-5 py-4">
         <h2 className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          Ask about this case
+          {scope ? `Ask about ${scope.vendorName}` : "Ask about this case"}
         </h2>
+        {scope && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+            <span className="text-[12px] text-foreground">
+              Reading only what <span className="font-medium">{scope.vendorName}</span> sent
+              with their bid.
+            </span>
+            {onClearScope && (
+              <button
+                type="button"
+                onClick={onClearScope}
+                className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground"
+              >
+                whole case
+              </button>
+            )}
+          </div>
+        )}
         <p className="mt-1 text-[13px] text-muted-foreground">
           {nothingToRead
             ? "Nothing is attached yet. Anything you attach is read and indexed, and can then be asked about here."
@@ -104,7 +144,11 @@ export function CaseAssistant({ caseId, caseNo }: { caseId: string; caseNo: stri
           <Textarea
             rows={2}
             value={question}
-            placeholder={`Ask something about ${caseNo}…`}
+            placeholder={
+              scope
+                ? `Ask about what ${scope.vendorName} sent…`
+                : `Ask something about ${caseNo}…`
+            }
             disabled={nothingToRead}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {

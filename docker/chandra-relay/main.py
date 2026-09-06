@@ -6,8 +6,9 @@ POST /ocr and expects back { markdown, images }. The bug this fixes: nothing
 was rasterizing PDF pages into real images before handing them to Chandra's
 vLLM chat-completions endpoint, which rejects raw PDF bytes wrapped as an
 image_url ("cannot identify image file"). This service does that rasterization
-step (pdf2image, same approach as reference/Service-Document-Loader's
-handwritten_ocr.py) and forwards each page image to vLLM.
+step (pdf2image, the same approach the older EVIGSENSE ingestion service takes --
+C:\\Projects\\Evigsense\\Service-Document-Loader on this machine) and forwards each
+page image to vLLM.
 """
 import base64
 import io
@@ -30,6 +31,14 @@ OCR_MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "16384"))
 OCR_REASONING_EFFORT = os.environ.get("OCR_REASONING_EFFORT") or None
 MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "20"))
 DPI = int(os.environ.get("OCR_RASTER_DPI", "200"))
+# Hard ceiling on the pixels handed to the VLM. Chandra tokenizes a 32x32 pixel
+# block per token (patch_size 16, merge_size 2) and its processor is configured
+# to resize almost nothing (longest_edge 16.7M), so a 200-DPI A4 page is ~3.8k
+# image tokens on its own -- with OCR_MAX_TOKENS on top that overruns a small
+# card's --max-model-len, and the request comes back 400. 2.36M px (~2.3k
+# tokens) leaves room for the completion. Pages are still rasterized at DPI and
+# downsampled here, which is sharper than rendering at the lower DPI directly.
+MAX_IMAGE_PIXELS = int(os.environ.get("OCR_MAX_IMAGE_PIXELS", "2359296"))
 # Pages are OCR'd concurrently to stay under the edge-runtime's ~400s wall-clock
 # limit on the caller — sequential per-page calls to a reasoning OCR model blow
 # past that on anything past a few pages. Match VLLM_OCR_SEQS so we don't queue
@@ -57,9 +66,19 @@ class OcrRequest(BaseModel):
     endPage: int | None = None
 
 
+def clamp_pixels(img: Image.Image) -> Image.Image:
+    """Downscales to MAX_IMAGE_PIXELS, preserving aspect ratio."""
+    pixels = img.width * img.height
+    if MAX_IMAGE_PIXELS <= 0 or pixels <= MAX_IMAGE_PIXELS:
+        return img
+    scale = (MAX_IMAGE_PIXELS / pixels) ** 0.5
+    size = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+    return img.resize(size, Image.LANCZOS)
+
+
 def image_to_data_uri(img: Image.Image) -> str:
     buf = io.BytesIO()
-    img.convert("RGB").save(buf, format="PNG")
+    clamp_pixels(img).convert("RGB").save(buf, format="PNG")
     encoded = base64.b64encode(buf.getvalue()).decode()
     return f"data:image/png;base64,{encoded}"
 

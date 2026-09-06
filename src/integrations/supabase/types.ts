@@ -1205,6 +1205,136 @@ export type Database = {
         }
         Relationships: []
       }
+      procurement_bidders: {
+        Row: {
+          amc_years: number | null
+          bid_amount: number | null
+          bid_amount_gross: number | null
+          bid_reference: string | null
+          bid_validity_days: number | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_days: number | null
+          disqualified_reason: string | null
+          emd_amount: number
+          emd_instrument: string | null
+          emd_received_at: string | null
+          emd_settled_at: string | null
+          emd_settlement_note: string | null
+          emd_status: string
+          gst_pct: number | null
+          id: string
+          msme_category: string | null
+          payment_terms: string | null
+          recorded_by: string | null
+          remarks: string | null
+          status: string
+          submitted_at: string | null
+          tec_decided_at: string | null
+          tec_decided_by: string | null
+          tec_note: string | null
+          tec_qualified: boolean | null
+          tender_id: string
+          updated_at: string
+          vendor_id: string
+          warranty_months: number | null
+        }
+        Insert: {
+          amc_years?: number | null
+          bid_amount?: number | null
+          bid_amount_gross?: number | null
+          bid_reference?: string | null
+          bid_validity_days?: number | null
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_days?: number | null
+          disqualified_reason?: string | null
+          emd_amount?: number
+          emd_instrument?: string | null
+          emd_received_at?: string | null
+          emd_settled_at?: string | null
+          emd_settlement_note?: string | null
+          emd_status?: string
+          gst_pct?: number | null
+          id?: string
+          msme_category?: string | null
+          payment_terms?: string | null
+          recorded_by?: string | null
+          remarks?: string | null
+          status?: string
+          submitted_at?: string | null
+          tec_decided_at?: string | null
+          tec_decided_by?: string | null
+          tec_note?: string | null
+          tec_qualified?: boolean | null
+          tender_id: string
+          updated_at?: string
+          vendor_id: string
+          warranty_months?: number | null
+        }
+        Update: {
+          amc_years?: number | null
+          bid_amount?: number | null
+          bid_amount_gross?: number | null
+          bid_reference?: string | null
+          bid_validity_days?: number | null
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_days?: number | null
+          disqualified_reason?: string | null
+          emd_amount?: number
+          emd_instrument?: string | null
+          emd_received_at?: string | null
+          emd_settled_at?: string | null
+          emd_settlement_note?: string | null
+          emd_status?: string
+          gst_pct?: number | null
+          id?: string
+          msme_category?: string | null
+          payment_terms?: string | null
+          recorded_by?: string | null
+          remarks?: string | null
+          status?: string
+          submitted_at?: string | null
+          tec_decided_at?: string | null
+          tec_decided_by?: string | null
+          tec_note?: string | null
+          tec_qualified?: boolean | null
+          tender_id?: string
+          updated_at?: string
+          vendor_id?: string
+          warranty_months?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_bidders_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_bidders_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_tenders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_bidders_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_boq_lines: {
         Row: {
           case_id: string
@@ -1377,6 +1507,7 @@ export type Database = {
       }
       procurement_case_documents: {
         Row: {
+          bidder_id: string | null
           case_id: string
           created_at: string
           doc_type: string
@@ -1389,6 +1520,7 @@ export type Database = {
           version: number
         }
         Insert: {
+          bidder_id?: string | null
           case_id: string
           created_at?: string
           doc_type?: string
@@ -1401,6 +1533,7 @@ export type Database = {
           version?: number
         }
         Update: {
+          bidder_id?: string | null
           case_id?: string
           created_at?: string
           doc_type?: string
@@ -1413,6 +1546,13 @@ export type Database = {
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "procurement_case_documents_bidder_id_fkey"
+            columns: ["bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "procurement_case_documents_case_id_fkey"
             columns: ["case_id"]
@@ -1466,6 +1606,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "procurement_case_events_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_case_signatures: {
+        Row: {
+          action_code: string
+          case_id: string
+          id: string
+          image: string
+          kind: string
+          signed_at: string
+          signer_id: string
+          stage: Database["public"]["Enums"]["procurement_stage"]
+        }
+        Insert: {
+          action_code: string
+          case_id: string
+          id?: string
+          image: string
+          kind?: string
+          signed_at?: string
+          signer_id: string
+          stage: Database["public"]["Enums"]["procurement_stage"]
+        }
+        Update: {
+          action_code?: string
+          case_id?: string
+          id?: string
+          image?: string
+          kind?: string
+          signed_at?: string
+          signer_id?: string
+          stage?: Database["public"]["Enums"]["procurement_stage"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_case_signatures_case_id_fkey"
             columns: ["case_id"]
             isOneToOne: false
             referencedRelation: "procurement_cases"
@@ -1529,6 +1710,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "procurement_cases_awarded_vendor_id_fkey"
+            columns: ["awarded_vendor_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_vendors"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "procurement_cases_department_id_fkey"
             columns: ["department_id"]
@@ -1694,6 +1882,163 @@ export type Database = {
             columns: ["case_id"]
             isOneToOne: false
             referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_corrigenda: {
+        Row: {
+          after_snapshot: Json
+          before_snapshot: Json
+          case_id: string
+          category: string
+          created_at: string
+          detail: string | null
+          id: string
+          issued_by: string | null
+          issued_on: string
+          needs_finance_review: boolean
+          new_bid_end_at: string | null
+          notice_document_id: string | null
+          notice_snapshot: Json | null
+          reason: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          serial_no: number
+          status: string
+          tender_id: string
+          title: string
+          updated_at: string
+          value_after: number | null
+          value_before: number | null
+          value_delta: number | null
+        }
+        Insert: {
+          after_snapshot?: Json
+          before_snapshot?: Json
+          case_id: string
+          category: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          issued_by?: string | null
+          issued_on?: string
+          needs_finance_review?: boolean
+          new_bid_end_at?: string | null
+          notice_document_id?: string | null
+          notice_snapshot?: Json | null
+          reason: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          serial_no: number
+          status?: string
+          tender_id: string
+          title: string
+          updated_at?: string
+          value_after?: number | null
+          value_before?: number | null
+          value_delta?: number | null
+        }
+        Update: {
+          after_snapshot?: Json
+          before_snapshot?: Json
+          case_id?: string
+          category?: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          issued_by?: string | null
+          issued_on?: string
+          needs_finance_review?: boolean
+          new_bid_end_at?: string | null
+          notice_document_id?: string | null
+          notice_snapshot?: Json | null
+          reason?: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          serial_no?: number
+          status?: string
+          tender_id?: string
+          title?: string
+          updated_at?: string
+          value_after?: number | null
+          value_before?: number | null
+          value_delta?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_corrigenda_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_corrigenda_notice_document_id_fkey"
+            columns: ["notice_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_corrigenda_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_tenders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_corrigendum_notices: {
+        Row: {
+          channel: string
+          corrigendum_id: string
+          created_at: string
+          id: string
+          note: string | null
+          notified_at: string
+          notified_by: string | null
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          channel?: string
+          corrigendum_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          notified_at?: string
+          notified_by?: string | null
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          channel?: string
+          corrigendum_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          notified_at?: string
+          notified_by?: string | null
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_corrigendum_notices_corrigendum_id_fkey"
+            columns: ["corrigendum_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_corrigenda"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_corrigendum_notices_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -1938,6 +2283,33 @@ export type Database = {
           },
         ]
       }
+      procurement_signatures: {
+        Row: {
+          created_at: string
+          image: string
+          kind: string
+          updated_at: string
+          use_by_default: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          image: string
+          kind?: string
+          updated_at?: string
+          use_by_default?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          image?: string
+          kind?: string
+          updated_at?: string
+          use_by_default?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       procurement_stage_actions: {
         Row: {
           action: Database["public"]["Enums"]["procurement_action"]
@@ -1945,6 +2317,7 @@ export type Database = {
           code: string
           description: string | null
           entry_status: string | null
+          gaps_function: string | null
           guard_function: string | null
           label: string
           permission: string
@@ -1960,6 +2333,7 @@ export type Database = {
           code: string
           description?: string | null
           entry_status?: string | null
+          gaps_function?: string | null
           guard_function?: string | null
           label: string
           permission: string
@@ -1975,6 +2349,7 @@ export type Database = {
           code?: string
           description?: string | null
           entry_status?: string | null
+          gaps_function?: string | null
           guard_function?: string | null
           label?: string
           permission?: string
@@ -2081,6 +2456,408 @@ export type Database = {
           },
         ]
       }
+      procurement_tec_ai_suggestions: {
+        Row: {
+          bidder_id: string
+          case_id: string
+          compliance_status: string
+          created_at: string
+          evidence: Json
+          generated_at: string
+          model: string | null
+          qualified: boolean | null
+          requested_by: string | null
+          score: number | null
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          bidder_id: string
+          case_id: string
+          compliance_status?: string
+          created_at?: string
+          evidence?: Json
+          generated_at?: string
+          model?: string | null
+          qualified?: boolean | null
+          requested_by?: string | null
+          score?: number | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bidder_id?: string
+          case_id?: string
+          compliance_status?: string
+          created_at?: string
+          evidence?: Json
+          generated_at?: string
+          model?: string | null
+          qualified?: boolean | null
+          requested_by?: string | null
+          score?: number | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tec_ai_suggestions_bidder_id_fkey"
+            columns: ["bidder_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_tec_checklist: {
+        Row: {
+          case_id: string
+          item_key: string
+          remarks: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          case_id: string
+          item_key: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          case_id?: string
+          item_key?: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tec_checklist_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_tec_evaluations: {
+        Row: {
+          bidder_id: string
+          case_id: string
+          compliance_status: string
+          created_at: string
+          id: string
+          member_id: string
+          qualified: boolean | null
+          remarks: string | null
+          score: number | null
+          signature_id: string | null
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          bidder_id: string
+          case_id: string
+          compliance_status?: string
+          created_at?: string
+          id?: string
+          member_id: string
+          qualified?: boolean | null
+          remarks?: string | null
+          score?: number | null
+          signature_id?: string | null
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bidder_id?: string
+          case_id?: string
+          compliance_status?: string
+          created_at?: string
+          id?: string
+          member_id?: string
+          qualified?: boolean | null
+          remarks?: string | null
+          score?: number | null
+          signature_id?: string | null
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tec_evaluations_bidder_id_fkey"
+            columns: ["bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_tec_evaluations_signature_id_fkey"
+            columns: ["signature_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_case_signatures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_tender_invitees: {
+        Row: {
+          created_at: string
+          id: string
+          invited_at: string
+          invited_by: string | null
+          note: string | null
+          tender_id: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          note?: string | null
+          tender_id: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          note?: string | null
+          tender_id?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tender_invitees_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_tenders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_tender_invitees_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_tender_items: {
+        Row: {
+          created_at: string
+          estimated_rate: number | null
+          hsn_code: string | null
+          id: string
+          item_name: string
+          line_amount: number | null
+          line_no: number
+          quantity: number
+          source_line_id: string | null
+          specification: string | null
+          tender_id: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_rate?: number | null
+          hsn_code?: string | null
+          id?: string
+          item_name: string
+          line_amount?: number | null
+          line_no: number
+          quantity?: number
+          source_line_id?: string | null
+          specification?: string | null
+          tender_id: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          estimated_rate?: number | null
+          hsn_code?: string | null
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          quantity?: number
+          source_line_id?: string | null
+          specification?: string | null
+          tender_id?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tender_items_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_tenders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_tenders: {
+        Row: {
+          bid_end_at: string | null
+          bid_start_at: string | null
+          bid_validity_days: number | null
+          bidding_closed_at: string | null
+          bidding_closed_by: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_days: number | null
+          eligibility: string | null
+          emd_amount: number
+          emd_exemption_note: string | null
+          emd_required: boolean
+          estimated_value: number | null
+          evaluation_note: string | null
+          financial_opening_at: string | null
+          floated_at: string | null
+          floated_by: string | null
+          gst_pct: number
+          id: string
+          mode: string
+          notice_document_id: string | null
+          notice_issued_at: string | null
+          notice_snapshot: Json | null
+          payment_terms: string | null
+          performance_security_pct: number
+          portal_reference: string | null
+          portal_url: string | null
+          prebid_meeting_at: string | null
+          prebid_venue: string | null
+          published_on: string | null
+          query_deadline_at: string | null
+          reference_no: string | null
+          scope_summary: string | null
+          single_justification: string | null
+          status: string
+          technical_opening_at: string | null
+          tender_fee: number
+          title: string | null
+          updated_at: string
+          warranty_terms: string | null
+        }
+        Insert: {
+          bid_end_at?: string | null
+          bid_start_at?: string | null
+          bid_validity_days?: number | null
+          bidding_closed_at?: string | null
+          bidding_closed_by?: string | null
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_days?: number | null
+          eligibility?: string | null
+          emd_amount?: number
+          emd_exemption_note?: string | null
+          emd_required?: boolean
+          estimated_value?: number | null
+          evaluation_note?: string | null
+          financial_opening_at?: string | null
+          floated_at?: string | null
+          floated_by?: string | null
+          gst_pct?: number
+          id?: string
+          mode?: string
+          notice_document_id?: string | null
+          notice_issued_at?: string | null
+          notice_snapshot?: Json | null
+          payment_terms?: string | null
+          performance_security_pct?: number
+          portal_reference?: string | null
+          portal_url?: string | null
+          prebid_meeting_at?: string | null
+          prebid_venue?: string | null
+          published_on?: string | null
+          query_deadline_at?: string | null
+          reference_no?: string | null
+          scope_summary?: string | null
+          single_justification?: string | null
+          status?: string
+          technical_opening_at?: string | null
+          tender_fee?: number
+          title?: string | null
+          updated_at?: string
+          warranty_terms?: string | null
+        }
+        Update: {
+          bid_end_at?: string | null
+          bid_start_at?: string | null
+          bid_validity_days?: number | null
+          bidding_closed_at?: string | null
+          bidding_closed_by?: string | null
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_days?: number | null
+          eligibility?: string | null
+          emd_amount?: number
+          emd_exemption_note?: string | null
+          emd_required?: boolean
+          estimated_value?: number | null
+          evaluation_note?: string | null
+          financial_opening_at?: string | null
+          floated_at?: string | null
+          floated_by?: string | null
+          gst_pct?: number
+          id?: string
+          mode?: string
+          notice_document_id?: string | null
+          notice_issued_at?: string | null
+          notice_snapshot?: Json | null
+          payment_terms?: string | null
+          performance_security_pct?: number
+          portal_reference?: string | null
+          portal_url?: string | null
+          prebid_meeting_at?: string | null
+          prebid_venue?: string | null
+          published_on?: string | null
+          query_deadline_at?: string | null
+          reference_no?: string | null
+          scope_summary?: string | null
+          single_justification?: string | null
+          status?: string
+          technical_opening_at?: string | null
+          tender_fee?: number
+          title?: string | null
+          updated_at?: string
+          warranty_terms?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_tenders_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_tenders_notice_document_id_fkey"
+            columns: ["notice_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_user_roles: {
         Row: {
           created_at: string
@@ -2116,6 +2893,95 @@ export type Database = {
           {
             foreignKeyName: "procurement_user_roles_department_id_fkey"
             columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_lookups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_vendors: {
+        Row: {
+          active: boolean
+          address: string | null
+          blacklist_reason: string | null
+          blacklisted: boolean
+          blacklisted_at: string | null
+          blacklisted_by: string | null
+          category_id: string | null
+          city: string | null
+          contact_person: string | null
+          country: string
+          created_at: string
+          created_by: string | null
+          email: string | null
+          gst_number: string | null
+          id: string
+          msme_category: string | null
+          name: string
+          notes: string | null
+          pan_number: string | null
+          phone: string | null
+          registration_id: string | null
+          state: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          active?: boolean
+          address?: string | null
+          blacklist_reason?: string | null
+          blacklisted?: boolean
+          blacklisted_at?: string | null
+          blacklisted_by?: string | null
+          category_id?: string | null
+          city?: string | null
+          contact_person?: string | null
+          country?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          msme_category?: string | null
+          name: string
+          notes?: string | null
+          pan_number?: string | null
+          phone?: string | null
+          registration_id?: string | null
+          state?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          active?: boolean
+          address?: string | null
+          blacklist_reason?: string | null
+          blacklisted?: boolean
+          blacklisted_at?: string | null
+          blacklisted_by?: string | null
+          category_id?: string | null
+          city?: string | null
+          contact_person?: string | null
+          country?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          msme_category?: string | null
+          name?: string
+          notes?: string | null
+          pan_number?: string | null
+          phone?: string | null
+          registration_id?: string | null
+          state?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_vendors_category_id_fkey"
+            columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "procurement_lookups"
             referencedColumns: ["id"]
@@ -2628,6 +3494,7 @@ export type Database = {
           code: string
           description: string | null
           entry_status: string | null
+          gaps_function: string | null
           guard_function: string | null
           label: string
           permission: string
@@ -2643,6 +3510,27 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      procurement_bid_document_readiness: {
+        Args: { _case_id: string }
+        Returns: {
+          bidder_id: string
+          failed: number
+          indexed: number
+          still_reading: number
+          total: number
+        }[]
+      }
+      procurement_bid_submissions: {
+        Args: { _case_id: string }
+        Returns: {
+          bid_status: string
+          bidder_id: string
+          document_count: number
+          indexed_count: number
+          vendor_id: string
+          vendor_name: string
+        }[]
       }
       procurement_boq_total: { Args: { _case_id: string }; Returns: number }
       procurement_budget_available: {
@@ -2667,6 +3555,7 @@ export type Database = {
           name: string
         }[]
       }
+      procurement_build_notice: { Args: { _tender_id: string }; Returns: Json }
       procurement_can_view_case: {
         Args: { _case_id: string; _user_id: string }
         Returns: boolean
@@ -2704,6 +3593,59 @@ export type Database = {
           total: number
         }[]
       }
+      procurement_close_bidding: {
+        Args: { _case_id: string; _remarks?: string }
+        Returns: {
+          bid_end_at: string | null
+          bid_start_at: string | null
+          bid_validity_days: number | null
+          bidding_closed_at: string | null
+          bidding_closed_by: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_days: number | null
+          eligibility: string | null
+          emd_amount: number
+          emd_exemption_note: string | null
+          emd_required: boolean
+          estimated_value: number | null
+          evaluation_note: string | null
+          financial_opening_at: string | null
+          floated_at: string | null
+          floated_by: string | null
+          gst_pct: number
+          id: string
+          mode: string
+          notice_document_id: string | null
+          notice_issued_at: string | null
+          notice_snapshot: Json | null
+          payment_terms: string | null
+          performance_security_pct: number
+          portal_reference: string | null
+          portal_url: string | null
+          prebid_meeting_at: string | null
+          prebid_venue: string | null
+          published_on: string | null
+          query_deadline_at: string | null
+          reference_no: string | null
+          scope_summary: string | null
+          single_justification: string | null
+          status: string
+          technical_opening_at: string | null
+          tender_fee: number
+          title: string | null
+          updated_at: string
+          warranty_terms: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_tenders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_committee_kind_for_stage: {
         Args: { _stage: Database["public"]["Enums"]["procurement_stage"] }
         Returns: Database["public"]["Enums"]["procurement_committee_kind"]
@@ -2727,7 +3669,68 @@ export type Database = {
           total_value: number
         }[]
       }
+      procurement_float_tender: {
+        Args: { _case_id: string; _remarks?: string }
+        Returns: {
+          bid_end_at: string | null
+          bid_start_at: string | null
+          bid_validity_days: number | null
+          bidding_closed_at: string | null
+          bidding_closed_by: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_days: number | null
+          eligibility: string | null
+          emd_amount: number
+          emd_exemption_note: string | null
+          emd_required: boolean
+          estimated_value: number | null
+          evaluation_note: string | null
+          financial_opening_at: string | null
+          floated_at: string | null
+          floated_by: string | null
+          gst_pct: number
+          id: string
+          mode: string
+          notice_document_id: string | null
+          notice_issued_at: string | null
+          notice_snapshot: Json | null
+          payment_terms: string | null
+          performance_security_pct: number
+          portal_reference: string | null
+          portal_url: string | null
+          prebid_meeting_at: string | null
+          prebid_venue: string | null
+          published_on: string | null
+          query_deadline_at: string | null
+          reference_no: string | null
+          scope_summary: string | null
+          single_justification: string | null
+          status: string
+          technical_opening_at: string | null
+          tender_fee: number
+          title: string | null
+          updated_at: string
+          warranty_terms: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_tenders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_guard_requisition_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_tec_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_tender_ready: {
         Args: { _case_id: string; _payload?: Json }
         Returns: boolean
       }
@@ -2742,6 +3745,42 @@ export type Database = {
           open_value: number
           rejected_cases: number
         }[]
+      }
+      procurement_issue_corrigendum: {
+        Args: { _case_id: string; _payload: Json }
+        Returns: {
+          after_snapshot: Json
+          before_snapshot: Json
+          case_id: string
+          category: string
+          created_at: string
+          detail: string | null
+          id: string
+          issued_by: string | null
+          issued_on: string
+          needs_finance_review: boolean
+          new_bid_end_at: string | null
+          notice_document_id: string | null
+          notice_snapshot: Json | null
+          reason: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          serial_no: number
+          status: string
+          tender_id: string
+          title: string
+          updated_at: string
+          value_after: number | null
+          value_before: number | null
+          value_delta: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_corrigenda"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       procurement_log_event: {
         Args: {
@@ -2805,6 +3844,7 @@ export type Database = {
         }
       }
       procurement_next_ref: { Args: { _prefix: string }; Returns: string }
+      procurement_publish_boq: { Args: { _case_id: string }; Returns: number }
       procurement_record_decision: {
         Args: {
           _action_code: string
@@ -2833,6 +3873,37 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "procurement_cases"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_record_tec_ai_suggestion: {
+        Args: {
+          _bidder_id: string
+          _compliance_status: string
+          _evidence: Json
+          _model: string
+          _qualified: boolean
+          _score: number
+          _summary: string
+        }
+        Returns: {
+          bidder_id: string
+          case_id: string
+          compliance_status: string
+          created_at: string
+          evidence: Json
+          generated_at: string
+          model: string | null
+          qualified: boolean | null
+          requested_by: string | null
+          score: number | null
+          summary: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_tec_ai_suggestions"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -2868,6 +3939,42 @@ export type Database = {
         Args: { _case_id: string }
         Returns: string[]
       }
+      procurement_revoke_corrigendum: {
+        Args: { _corrigendum_id: string; _reason: string }
+        Returns: {
+          after_snapshot: Json
+          before_snapshot: Json
+          case_id: string
+          category: string
+          created_at: string
+          detail: string | null
+          id: string
+          issued_by: string | null
+          issued_on: string
+          needs_finance_review: boolean
+          new_bid_end_at: string | null
+          notice_document_id: string | null
+          notice_snapshot: Json | null
+          reason: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          serial_no: number
+          status: string
+          tender_id: string
+          title: string
+          updated_at: string
+          value_after: number | null
+          value_before: number | null
+          value_delta: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_corrigenda"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_role_reaches_stage: {
         Args: {
           _stage: Database["public"]["Enums"]["procurement_stage"]
@@ -2877,6 +3984,7 @@ export type Database = {
       }
       procurement_search_case_chunks: {
         Args: {
+          _bidder_id?: string
           _case_id: string
           _user_id: string
           match_count?: number
@@ -2890,6 +3998,50 @@ export type Database = {
           page_number: number
           similarity: number
         }[]
+      }
+      procurement_set_bidder_qualification: {
+        Args: { _bidder_id: string; _note?: string; _qualified: boolean }
+        Returns: {
+          amc_years: number | null
+          bid_amount: number | null
+          bid_amount_gross: number | null
+          bid_reference: string | null
+          bid_validity_days: number | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_days: number | null
+          disqualified_reason: string | null
+          emd_amount: number
+          emd_instrument: string | null
+          emd_received_at: string | null
+          emd_settled_at: string | null
+          emd_settlement_note: string | null
+          emd_status: string
+          gst_pct: number | null
+          id: string
+          msme_category: string | null
+          payment_terms: string | null
+          recorded_by: string | null
+          remarks: string | null
+          status: string
+          submitted_at: string | null
+          tec_decided_at: string | null
+          tec_decided_by: string | null
+          tec_note: string | null
+          tec_qualified: boolean | null
+          tender_id: string
+          updated_at: string
+          vendor_id: string
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_bidders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       procurement_stage_aging: {
         Args: never
@@ -2914,9 +4066,93 @@ export type Database = {
           total_value: number
         }[]
       }
+      procurement_submit_tec_evaluation: {
+        Args: {
+          _bidder_id: string
+          _compliance_status: string
+          _qualified: boolean
+          _remarks: string
+          _score: number
+          _signature?: Json
+        }
+        Returns: {
+          bidder_id: string
+          case_id: string
+          compliance_status: string
+          created_at: string
+          id: string
+          member_id: string
+          qualified: boolean | null
+          remarks: string | null
+          score: number | null
+          signature_id: string | null
+          submitted_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_tec_evaluations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_sync_case_cost: {
         Args: { _case_id: string }
         Returns: undefined
+      }
+      procurement_tec_assert_open: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_tec_case_consensus: {
+        Args: { _case_id: string }
+        Returns: {
+          avg_score: number
+          bidder_id: string
+          member_count: number
+          qualified_count: number
+          qualified_pct: number
+        }[]
+      }
+      procurement_tec_constitute_committee: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_tec_gaps: { Args: { _case_id: string }; Returns: string[] }
+      procurement_tec_seed_checklist: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_tender_assert_desk: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_tender_boq_total: {
+        Args: { _tender_id: string }
+        Returns: number
+      }
+      procurement_tender_gaps: { Args: { _case_id: string }; Returns: string[] }
+      procurement_tender_summary: {
+        Args: { _case_id: string }
+        Returns: {
+          bid_end_at: string
+          bid_start_at: string
+          bidder_count: number
+          corrigendum_count: number
+          emd_outstanding_count: number
+          floated_at: string
+          invitee_count: number
+          item_count: number
+          lowest_bid: number
+          mode: string
+          notice_document_id: string
+          notice_issued_at: string
+          portal_reference: string
+          published_value: number
+          reference_no: string
+          status: string
+          tender_id: string
+        }[]
       }
       procurement_transition_allowed: {
         Args: {

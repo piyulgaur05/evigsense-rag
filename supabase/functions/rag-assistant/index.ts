@@ -17,6 +17,11 @@ const requestSchema = z.object({
   // scoped to the paperwork attached to that case, for anyone the case
   // policies let read it -- including people who did not upload it.
   caseId: z.string().uuid("Invalid case ID").optional(),
+  // Narrow a case question to one bidder's own submission. Asked across the
+  // whole case, "does this firm hold a valid licence?" happily retrieves the
+  // licence a different bidder sent and answers yes; scoped, an absent
+  // certificate looks absent, which is the finding an evaluation needs.
+  bidderId: z.string().uuid("Invalid bidder ID").optional(),
 });
 
 interface AvailableImage {
@@ -123,7 +128,7 @@ serve(async (req) => {
       );
     }
     
-    const { query, conversationId, documentId, caseId } = validationResult.data;
+    const { query, conversationId, documentId, caseId, bidderId } = validationResult.data;
     const authHeader = req.headers.get('Authorization')!;
     
     const supabase = createClient(
@@ -237,6 +242,7 @@ serve(async (req) => {
           query_embedding: embeddingString,
           match_threshold: 0.0,
           match_count: rerankOn ? RERANK_CANDIDATES : 30,
+          _bidder_id: bidderId ?? null,
         })
       : await supabase
         .rpc('search_documents_by_embedding', {
