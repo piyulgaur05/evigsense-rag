@@ -10,6 +10,13 @@ import * as signatures from "../api/signatures";
 import * as tec from "../api/tec";
 import * as tender from "../api/tender";
 import * as vendors from "../api/vendors";
+import * as commercial from "../api/commercial";
+import * as cst from "../api/cst";
+import * as negotiation from "../api/negotiation";
+import * as proposal from "../api/proposal";
+import * as purchaseOrder from "../api/purchaseOrder";
+import * as goodsReceipt from "../api/goodsReceipt";
+import * as payment from "../api/payment";
 import { fetchLookups } from "../api/lookups";
 import type { CaseFilters, ProcurementStage } from "../types";
 
@@ -58,6 +65,46 @@ export const procurementKeys = {
   tecConsensus: (caseId: string) => [...procurementKeys.all, "tec-consensus", caseId] as const,
   tecGaps: (caseId: string) => [...procurementKeys.all, "tec-gaps", caseId] as const,
   tecAiSuggestions: (caseId: string) => [...procurementKeys.all, "tec-ai-suggestions", caseId] as const,
+  commercialRecord: (caseId: string) => [...procurementKeys.all, "commercial-record", caseId] as const,
+  commercialQuotes: (caseId: string) => [...procurementKeys.all, "commercial-quotes", caseId] as const,
+  commercialRanking: (caseId: string) => [...procurementKeys.all, "commercial-ranking", caseId] as const,
+  commercialMatrix: (caseId: string) => [...procurementKeys.all, "commercial-matrix", caseId] as const,
+  commercialReasonableness: (caseId: string) =>
+    [...procurementKeys.all, "commercial-reasonableness", caseId] as const,
+  commercialGaps: (caseId: string) => [...procurementKeys.all, "commercial-gaps", caseId] as const,
+  cstLiveVersion: (caseId: string) => [...procurementKeys.all, "cst-live-version", caseId] as const,
+  cstVersions: (caseId: string) => [...procurementKeys.all, "cst-versions", caseId] as const,
+  cstScrutiny: (caseId: string, version: number) =>
+    [...procurementKeys.all, "cst-scrutiny", caseId, version] as const,
+  commercialRecommendation: (caseId: string) =>
+    [...procurementKeys.all, "commercial-recommendation", caseId] as const,
+  recommendationHistory: (caseId: string) =>
+    [...procurementKeys.all, "recommendation-history", caseId] as const,
+  commercialApprovals: (caseId: string) =>
+    [...procurementKeys.all, "commercial-approvals", caseId] as const,
+  cstGaps: (caseId: string) => [...procurementKeys.all, "cst-gaps", caseId] as const,
+  negotiation: (caseId: string) => [...procurementKeys.all, "negotiation", caseId] as const,
+  negotiationRounds: (caseId: string) =>
+    [...procurementKeys.all, "negotiation-rounds", caseId] as const,
+  negotiationGaps: (caseId: string) =>
+    [...procurementKeys.all, "negotiation-gaps", caseId] as const,
+  proposal: (caseId: string) => [...procurementKeys.all, "proposal", caseId] as const,
+  proposalGaps: (caseId: string) => [...procurementKeys.all, "proposal-gaps", caseId] as const,
+  purchaseOrder: (caseId: string) => [...procurementKeys.all, "purchase-order", caseId] as const,
+  poLines: (caseId: string) => [...procurementKeys.all, "po-lines", caseId] as const,
+  poAmendments: (caseId: string) => [...procurementKeys.all, "po-amendments", caseId] as const,
+  poAiDraft: (caseId: string) => [...procurementKeys.all, "po-ai-draft", caseId] as const,
+  poGaps: (caseId: string) => [...procurementKeys.all, "po-gaps", caseId] as const,
+  liveGoodsReceipt: (caseId: string) => [...procurementKeys.all, "live-grn", caseId] as const,
+  grnCycles: (caseId: string) => [...procurementKeys.all, "grn-cycles", caseId] as const,
+  grnLines: (grnId: string) => [...procurementKeys.all, "grn-lines", grnId] as const,
+  grnSummary: (caseId: string) => [...procurementKeys.all, "grn-summary", caseId] as const,
+  grnCloseGaps: (caseId: string) => [...procurementKeys.all, "grn-close-gaps", caseId] as const,
+  grnForwardGaps: (caseId: string) => [...procurementKeys.all, "grn-forward-gaps", caseId] as const,
+  paymentRecommendation: (caseId: string) =>
+    [...procurementKeys.all, "payment-recommendation", caseId] as const,
+  paymentGaps: (caseId: string) => [...procurementKeys.all, "payment-gaps", caseId] as const,
+  paymentAiDraft: (caseId: string) => [...procurementKeys.all, "payment-ai-draft", caseId] as const,
 };
 
 // Reference data barely moves; an hour of staleness saves a request per screen.
@@ -145,6 +192,17 @@ export function useAvailableActions(caseId: string | undefined) {
   return useQuery({
     queryKey: procurementKeys.actions(caseId ?? ""),
     queryFn: () => cases.fetchAvailableActions(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+/** Available actions, each carrying its own gate's outstanding gaps — what
+ * the action bar actually renders, so a not-yet-ready action shows why
+ * rather than failing silently on press. */
+export function useAvailableActionsWithGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: [...procurementKeys.actions(caseId ?? ""), "with-gaps"] as const,
+    queryFn: () => cases.fetchAvailableActionsWithGaps(caseId as string),
     enabled: Boolean(caseId),
   });
 }
@@ -500,6 +558,16 @@ export function useCaseSignatures(caseId: string | undefined) {
   });
 }
 
+/** The same signatures, with the signer's name and the role they held at the
+ * moment they signed — for the purchase order PDF's own signature block. */
+export function useCaseSignaturesNamed(caseId: string | undefined) {
+  return useQuery({
+    queryKey: [...procurementKeys.caseSignatures(caseId ?? ""), "named"] as const,
+    queryFn: () => signatures.fetchCaseSignaturesNamed(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
 export function useCreateBudgetHead() {
   return useMasterDataMutation(masterData.createBudgetHead, (row) => `Added ${row.name}`);
 }
@@ -695,3 +763,299 @@ export const useSaveTecChecklistItem = () => useTenderMutation(tec.saveTecCheckl
 export const useSubmitTecEvaluation = () => useTenderMutation(tec.submitTecEvaluation);
 export const useSetBidderQualification = () => useTenderMutation(tec.setBidderQualification);
 export const useRequestTecAiEvaluation = () => useTenderMutation(tec.requestTecAiEvaluation);
+
+// ===== The commercial desk =====
+
+export function useCommercialRecord(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialRecord(caseId ?? ""),
+    queryFn: () => commercial.fetchCommercialRecord(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialQuotes(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialQuotes(caseId ?? ""),
+    queryFn: () => commercial.fetchCommercialQuotes(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialRanking(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialRanking(caseId ?? ""),
+    queryFn: () => commercial.fetchCommercialRanking(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialLineComparison(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialMatrix(caseId ?? ""),
+    queryFn: () => commercial.fetchLineComparison(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialReasonableness(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialReasonableness(caseId ?? ""),
+    queryFn: () => commercial.fetchReasonableness(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialGaps(caseId ?? ""),
+    queryFn: () => commercial.fetchCommercialGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSaveQuote = () => useTenderMutation(commercial.saveQuote);
+export const useRecordQuoteSchedule = () => useTenderMutation(commercial.recordQuoteSchedule);
+export const useSetRankingBasis = () => useTenderMutation(commercial.setRankingBasis);
+
+// ===== The comparative statement =====
+
+export function useLiveCstVersion(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.cstLiveVersion(caseId ?? ""),
+    queryFn: () => cst.fetchLiveCstVersion(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCstVersions(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.cstVersions(caseId ?? ""),
+    queryFn: () => cst.fetchCstVersions(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCstScrutiny(caseId: string | undefined, version: number | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.cstScrutiny(caseId ?? "", version ?? 0),
+    queryFn: () => cst.fetchCstScrutiny(caseId as string, version as number),
+    enabled: Boolean(caseId) && Boolean(version),
+  });
+}
+
+export function useCommercialRecommendation(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialRecommendation(caseId ?? ""),
+    queryFn: () => cst.fetchRecommendation(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useRecommendationHistory(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.recommendationHistory(caseId ?? ""),
+    queryFn: () => cst.fetchRecommendationHistory(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCommercialApprovals(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.commercialApprovals(caseId ?? ""),
+    queryFn: () => cst.fetchCommercialApprovals(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useCstGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.cstGaps(caseId ?? ""),
+    queryFn: () => cst.fetchCstGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSaveCstScrutiny = () => useTenderMutation(cst.saveCstScrutiny);
+export const useRecordRecommendation = () => useTenderMutation(cst.recordRecommendation);
+export const useApproveCstAuthority = () => useTenderMutation(cst.approveCstAuthority);
+
+// ===== Price negotiation =====
+
+export function useNegotiation(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.negotiation(caseId ?? ""),
+    queryFn: () => negotiation.fetchNegotiation(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useNegotiationRounds(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.negotiationRounds(caseId ?? ""),
+    queryFn: () => negotiation.fetchNegotiationRounds(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useNegotiationGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.negotiationGaps(caseId ?? ""),
+    queryFn: () => negotiation.fetchNegotiationGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSaveNegotiationMandate = () => useTenderMutation(negotiation.saveNegotiationMandate);
+export const useOpenNegotiationRound = () => useTenderMutation(negotiation.openNegotiationRound);
+export const useUpdateNegotiationRound = () => useTenderMutation(negotiation.updateNegotiationRound);
+export const useCloseNegotiationRound = () => useTenderMutation(negotiation.closeNegotiationRound);
+
+// ===== Purchase proposal =====
+
+export function useProposal(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.proposal(caseId ?? ""),
+    queryFn: () => proposal.fetchProposal(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useProposalGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.proposalGaps(caseId ?? ""),
+    queryFn: () => proposal.fetchProposalGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSaveProposal = () => useTenderMutation(proposal.saveProposal);
+
+// ===== Purchase order =====
+
+export function usePurchaseOrder(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.purchaseOrder(caseId ?? ""),
+    queryFn: () => purchaseOrder.fetchPurchaseOrder(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function usePoLines(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.poLines(caseId ?? ""),
+    queryFn: () => purchaseOrder.fetchPoLines(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function usePoAmendments(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.poAmendments(caseId ?? ""),
+    queryFn: () => purchaseOrder.fetchPoAmendments(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function usePoAiDraft(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.poAiDraft(caseId ?? ""),
+    queryFn: () => purchaseOrder.fetchPoAiDraft(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function usePoGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.poGaps(caseId ?? ""),
+    queryFn: () => purchaseOrder.fetchPoGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSavePurchaseOrder = () => useTenderMutation(purchaseOrder.savePurchaseOrder);
+export const useRecordVendorAck = () => useTenderMutation(purchaseOrder.recordVendorAck);
+export const useAmendPurchaseOrder = () => useTenderMutation(purchaseOrder.amendPurchaseOrder);
+export const useRequestPoAiDraft = () => useTenderMutation(purchaseOrder.requestPoAiDraft);
+
+// ===== Goods receipt =====
+
+export function useLiveGoodsReceipt(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.liveGoodsReceipt(caseId ?? ""),
+    queryFn: () => goodsReceipt.fetchLiveGoodsReceipt(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useGrnCycles(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.grnCycles(caseId ?? ""),
+    queryFn: () => goodsReceipt.fetchGoodsReceiptCycles(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useGrnLines(grnId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.grnLines(grnId ?? ""),
+    queryFn: () => goodsReceipt.fetchGrnLines(grnId as string),
+    enabled: Boolean(grnId),
+  });
+}
+
+export function useGrnSummary(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.grnSummary(caseId ?? ""),
+    queryFn: () => goodsReceipt.fetchGrnSummary(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useGrnCloseGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.grnCloseGaps(caseId ?? ""),
+    queryFn: () => goodsReceipt.fetchGrnCloseGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function useGrnForwardGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.grnForwardGaps(caseId ?? ""),
+    queryFn: () => goodsReceipt.fetchGrnForwardGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSaveGrnLine = () => useTenderMutation(goodsReceipt.saveGrnLine);
+
+// ===== Payment recommendation =====
+
+export function usePaymentRecommendation(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.paymentRecommendation(caseId ?? ""),
+    queryFn: () => payment.fetchPaymentRecommendation(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export function usePaymentGaps(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.paymentGaps(caseId ?? ""),
+    queryFn: () => payment.fetchPaymentGaps(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useSavePaymentRecommendation = () => useTenderMutation(payment.savePaymentRecommendation);
+
+export function usePaymentAiDraft(caseId: string | undefined) {
+  return useQuery({
+    queryKey: procurementKeys.paymentAiDraft(caseId ?? ""),
+    queryFn: () => payment.fetchPaymentAiDraft(caseId as string),
+    enabled: Boolean(caseId),
+  });
+}
+
+export const useRequestPaymentAiDraft = () => useTenderMutation(payment.requestPaymentAiDraft);

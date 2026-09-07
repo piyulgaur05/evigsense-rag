@@ -212,7 +212,7 @@ export default function ProcurementCase() {
                   Every decision, movement, question and document on this case.
                 </p>
               </header>
-              <div className="px-5 py-5">
+              <div className="max-h-[28rem] overflow-y-auto px-5 py-5">
                 <CaseTimeline caseId={procurementCase.id} />
               </div>
             </section>
@@ -234,7 +234,7 @@ export default function ProcurementCase() {
                   Every decision, movement, question and document on this case.
                 </p>
               </header>
-              <div className="px-5 py-5">
+              <div className="max-h-[28rem] overflow-y-auto px-5 py-5">
                 <CaseTimeline caseId={procurementCase.id} />
               </div>
             </section>

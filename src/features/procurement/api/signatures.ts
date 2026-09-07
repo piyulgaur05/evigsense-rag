@@ -67,6 +67,22 @@ export async function deleteMySignature(userId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** One signed decision, with the signer's name and the procurement role they
+ * held at the moment they signed — resolved server-side, since neither is
+ * something RLS lets a client join for itself. */
+export type NamedCaseSignature = CaseSignature & {
+  signer_name: string;
+  signer_role: string | null;
+};
+
+export async function fetchCaseSignaturesNamed(caseId: string): Promise<NamedCaseSignature[]> {
+  const { data, error } = await supabase.rpc("procurement_case_signatures_named", {
+    _case_id: caseId,
+  });
+  if (error) throw new Error(error.message);
+  return (data as NamedCaseSignature[]) ?? [];
+}
+
 export async function fetchCaseSignatures(caseId: string): Promise<CaseSignature[]> {
   const { data, error } = await supabase
     .from("procurement_case_signatures")

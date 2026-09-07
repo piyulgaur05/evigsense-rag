@@ -1,0 +1,129 @@
+# Chandra OCR on a standard x86_64 + CUDA host (this repo's dev machine), plus
+# the PDF-rasterizing relay the app's chandra-native backend talks to.
+#
+#   8102  ocr    datalab-to/chandra-ocr-2  -> OCR_BASE_URL   (vLLM, OpenAI API)
+#   8105  relay  chandra-relay             -> CHANDRA_BASE_URL
+#
+# This is the x86 counterpart of the vllm-ocr/chandra-relay pair in
+# docker-compose.models.yml (which targets the DGX Spark's arm64 / sm_121a
+# image and its 119 GiB unified pool). Everything else -- chat, translation,
+# embeddings -- is served remotely over ngrok, so the whole local GPU budget
+# belongs to this one model.
+#
+# Start alongside the Supabase stack (joins the same compose project, so the
+# edge functions reach these as http://vllm-ocr:8000/v1 and
+# http://chandra-relay:8001 without a host port hop):
+#   docker compose --env-file .env -f docker-compose.yml -f docker-compose.ocr.yml up -d
+#
+# ---------------------------------------------------------------------------
+# VRAM. chandra-ocr-2 is a 5.3B Qwen3.5-VL hybrid; its bf16 weights are 10.6 GB
+# and do NOT fit an 8 GB card. VLLM_QUANTIZATION=fp8 (Ada sm_89 / Blackwell)
+# quantizes them on the fly to ~5.3 GB, which does. gpu-memory-utilization is a
+# fraction of TOTAL device memory, so 0.92 of 8 GB leaves ~2 GB above the
+# weights for the vision encoder, activations and KV cache. Only 8 of the 32
+# layers are full attention (the rest are linear/mamba, constant state), so KV
+# is cheap and a 16k context still fits.
+#
+# The image size cap matters as much as the weights here. Chandra's processor is
+# configured to resize almost nothing (longest_edge 16.7M px), so a 200-DPI A4
+# page is 3796 image tokens and vLLM profiles startup memory against an image of
+# that maximum size -- with the default cap the profiling peak leaves KV cache at
+# -0.45 GiB and the engine refuses to start. --mm-processor-kwargs caps it at
+# 2.36M px (2280 tokens), which the relay's OCR_MAX_IMAGE_PIXELS mirrors so the
+# downscale happens once, on the CPU side, with a good resampler.
+#
+# Do NOT run docker-compose.vllm.yml (embed/rerank) at the same time on an 8 GB
+# card -- those want ~5 GB of their own and this will fail to allocate.
+# ---------------------------------------------------------------------------
+
+# Must match `name:` in docker-compose.yml so both files land in one project.
+name: jyoma-ai-offline
+
+services:
+  # --- OCR: Chandra 2 VLM over /v1/chat/completions -------------------------
+  vllm-ocr:
+    image: ${VLLM_IMAGE_CUDA:-vllm/vllm-openai:latest}
+    container_name: jyoma-vllm-ocr
+    restart: unless-stopped
+    # vLLM's workers need far more than the 64MB default shared memory.
+    ipc: host
+    # Overrides the image's baked-in ENTRYPOINT ["vllm","serve"]; without it
+    # Docker runs ENTRYPOINT + command back to back and vllm parses "sh" as the
+    # model name.
+    entrypoint: []
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "${VLLM_OCR_PORT:-8102}:8000"
+    # Shell form so an unset VLLM_QUANTIZATION collapses away instead of being
+    # passed as an empty argument, which vLLM rejects.
+    command:
+      - sh
+      - -lc
+      - >
+        exec vllm serve "${OCR_MODEL_ID:-datalab-to/chandra-ocr-2}"
+        --served-model-name "${OCR_MODEL:-chandra-ocr-2}"
+        --host 0.0.0.0 --port 8000
+        --gpu-memory-utilization ${VLLM_CUDA_OCR_MEM:-0.92}
+        --max-model-len ${VLLM_CUDA_OCR_CTX:-16384}
+        --max-num-seqs ${VLLM_CUDA_OCR_SEQS:-1}
+        --max-num-batched-tokens ${VLLM_CUDA_OCR_BATCH_TOKENS:-4096}
+        --limit-mm-per-prompt '{"image": 1}'
+        --mm-processor-kwargs '{"size": {"shortest_edge": 65536, "longest_edge": ${VLLM_CUDA_OCR_MAX_PIXELS:-2359296}}}'
+        ${VLLM_CUDA_OCR_EAGER:+--enforce-eager}
+        ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+    healthcheck:
+      # python, not curl: python is guaranteed present in a vLLM image.
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=5).status==200 else 1)"
+      interval: 15s
+      timeout: 5s
+      # First boot downloads ~10.6GB of weights before the port opens.
+      retries: 120
+      start_period: 300s
+
+  # --- OCR relay: rasterizes PDF pages before handing them to vllm-ocr ------
+  # _shared/ocr.ts's chandra-native backend posts raw PDF/image bytes to
+  # POST /ocr expecting { markdown, images } back. vllm-ocr's chat-completions
+  # endpoint needs an actual PNG/JPEG, not raw PDF bytes wrapped as an
+  # image_url -- this relay does that conversion (pdf2image) and forwards each
+  # page to vllm-ocr. CPU-only, no GPU reservation.
+  chandra-relay:
+    build: ./chandra-relay
+    container_name: jyoma-chandra-relay
+    restart: unless-stopped
+    depends_on:
+      vllm-ocr:
+        condition: service_healthy
+    ports:
+      - "${CHANDRA_RELAY_PORT:-8105}:8001"
+    environment:
+      OCR_BASE_URL: http://vllm-ocr:8000/v1
+      OCR_MODEL: ${OCR_MODEL:-chandra-ocr-2}
+      OCR_MAX_TOKENS: ${OCR_MAX_TOKENS:-8192}
+      # Downscale ceiling for the page image. A 200-DPI A4 page is ~3.8k image
+      # tokens unclamped, which plus OCR_MAX_TOKENS overruns --max-model-len.
+      OCR_MAX_IMAGE_PIXELS: ${OCR_MAX_IMAGE_PIXELS:-2359296}
+      OCR_REASONING_EFFORT: ${OCR_REASONING_EFFORT:-}
+      # Match vllm-ocr's own concurrency ceiling so the relay doesn't queue
+      # more parallel requests than the server will actually run at once.
+      OCR_CONCURRENCY: ${VLLM_CUDA_OCR_SEQS:-1}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health',timeout=5).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  hf-cache:

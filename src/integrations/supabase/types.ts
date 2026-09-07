@@ -1783,6 +1783,310 @@ export type Database = {
           },
         ]
       }
+      procurement_commercial: {
+        Row: {
+          case_id: string
+          created_at: string
+          quote_status: string
+          ranking_basis: string
+          revision: number
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          quote_status?: string
+          ranking_basis?: string
+          revision?: number
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          quote_status?: string
+          ranking_basis?: string
+          revision?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_commercial_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_commercial_approvals: {
+        Row: {
+          actor_id: string | null
+          case_id: string
+          decided_at: string
+          id: string
+          kind: string
+          remarks: string | null
+          revision: number
+          signature_id: string | null
+          status: string
+        }
+        Insert: {
+          actor_id?: string | null
+          case_id: string
+          decided_at?: string
+          id?: string
+          kind: string
+          remarks?: string | null
+          revision?: number
+          signature_id?: string | null
+          status: string
+        }
+        Update: {
+          actor_id?: string | null
+          case_id?: string
+          decided_at?: string
+          id?: string
+          kind?: string
+          remarks?: string | null
+          revision?: number
+          signature_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_commercial_approvals_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_commercial_approvals_signature_id_fkey"
+            columns: ["signature_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_case_signatures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_commercial_quotes: {
+        Row: {
+          base_price: number
+          bidder_id: string
+          case_id: string
+          commercial_compliance: string
+          created_at: string
+          created_by: string | null
+          discount: number
+          evaluated_cost: number | null
+          freight: number
+          fully_priced: boolean
+          gst_amount: number | null
+          gst_pct: number
+          id: string
+          loading_amount: number
+          loading_note: string | null
+          other_charges: number
+          price_source: string
+          remarks: string | null
+          schedule_captured_at: string | null
+          schedule_issues: Json
+          schedule_source: string | null
+          stated_total: number | null
+          taxable_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          base_price?: number
+          bidder_id: string
+          case_id: string
+          commercial_compliance?: string
+          created_at?: string
+          created_by?: string | null
+          discount?: number
+          evaluated_cost?: number | null
+          freight?: number
+          fully_priced?: boolean
+          gst_amount?: number | null
+          gst_pct?: number
+          id?: string
+          loading_amount?: number
+          loading_note?: string | null
+          other_charges?: number
+          price_source?: string
+          remarks?: string | null
+          schedule_captured_at?: string | null
+          schedule_issues?: Json
+          schedule_source?: string | null
+          stated_total?: number | null
+          taxable_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          base_price?: number
+          bidder_id?: string
+          case_id?: string
+          commercial_compliance?: string
+          created_at?: string
+          created_by?: string | null
+          discount?: number
+          evaluated_cost?: number | null
+          freight?: number
+          fully_priced?: boolean
+          gst_amount?: number | null
+          gst_pct?: number
+          id?: string
+          loading_amount?: number
+          loading_note?: string | null
+          other_charges?: number
+          price_source?: string
+          remarks?: string | null
+          schedule_captured_at?: string | null
+          schedule_issues?: Json
+          schedule_source?: string | null
+          stated_total?: number | null
+          taxable_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_commercial_quotes_bidder_id_fkey"
+            columns: ["bidder_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_commercial_recommendation_history: {
+        Row: {
+          case_id: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_bidder_id: string | null
+          new_outcome: string
+          new_reason: string | null
+          new_vendor_name: string | null
+          previous_bidder_id: string | null
+          previous_outcome: string | null
+          previous_reason: string | null
+          previous_vendor_name: string | null
+          remarks: string | null
+          version: number
+        }
+        Insert: {
+          case_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_bidder_id?: string | null
+          new_outcome: string
+          new_reason?: string | null
+          new_vendor_name?: string | null
+          previous_bidder_id?: string | null
+          previous_outcome?: string | null
+          previous_reason?: string | null
+          previous_vendor_name?: string | null
+          remarks?: string | null
+          version: number
+        }
+        Update: {
+          case_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_bidder_id?: string | null
+          new_outcome?: string
+          new_reason?: string | null
+          new_vendor_name?: string | null
+          previous_bidder_id?: string | null
+          previous_outcome?: string | null
+          previous_reason?: string | null
+          previous_vendor_name?: string | null
+          remarks?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_commercial_recommendation_history_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_commercial_recommendations: {
+        Row: {
+          authority_reasons: string[]
+          authority_required: boolean
+          case_id: string
+          computed_l1_bidder_id: string | null
+          justification_reason: string | null
+          justification_text: string | null
+          outcome: string
+          recommended_at: string
+          recommended_bidder_id: string | null
+          recommended_by: string | null
+          remarks: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          authority_reasons?: string[]
+          authority_required?: boolean
+          case_id: string
+          computed_l1_bidder_id?: string | null
+          justification_reason?: string | null
+          justification_text?: string | null
+          outcome?: string
+          recommended_at?: string
+          recommended_bidder_id?: string | null
+          recommended_by?: string | null
+          remarks?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          authority_reasons?: string[]
+          authority_required?: boolean
+          case_id?: string
+          computed_l1_bidder_id?: string | null
+          justification_reason?: string | null
+          justification_text?: string | null
+          outcome?: string
+          recommended_at?: string
+          recommended_bidder_id?: string | null
+          recommended_by?: string | null
+          remarks?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_commercial_recommendatio_computed_l1_bidder_id_fkey"
+            columns: ["computed_l1_bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_commercial_recommendatio_recommended_bidder_id_fkey"
+            columns: ["recommended_bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_commercial_recommendations_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_committee_members: {
         Row: {
           attended: boolean
@@ -2043,6 +2347,241 @@ export type Database = {
           },
         ]
       }
+      procurement_cst_scrutiny: {
+        Row: {
+          case_id: string
+          item_key: string
+          remarks: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          case_id: string
+          item_key: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          version: number
+        }
+        Update: {
+          case_id?: string
+          item_key?: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_cst_scrutiny_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_cst_versions: {
+        Row: {
+          case_id: string
+          compiled_at: string | null
+          compiled_by: string | null
+          computed_l1_bidder_id: string | null
+          created_at: string
+          generated_on: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          ranking_basis: string | null
+          reopen_reason: string | null
+          signature_id: string | null
+          signed_off_at: string | null
+          signed_off_by: string | null
+          snapshot: Json | null
+          status: string
+          superseded_at: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          case_id: string
+          compiled_at?: string | null
+          compiled_by?: string | null
+          computed_l1_bidder_id?: string | null
+          created_at?: string
+          generated_on?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          ranking_basis?: string | null
+          reopen_reason?: string | null
+          signature_id?: string | null
+          signed_off_at?: string | null
+          signed_off_by?: string | null
+          snapshot?: Json | null
+          status?: string
+          superseded_at?: string | null
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          case_id?: string
+          compiled_at?: string | null
+          compiled_by?: string | null
+          computed_l1_bidder_id?: string | null
+          created_at?: string
+          generated_on?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          ranking_basis?: string | null
+          reopen_reason?: string | null
+          signature_id?: string | null
+          signed_off_at?: string | null
+          signed_off_by?: string | null
+          snapshot?: Json | null
+          status?: string
+          superseded_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_cst_versions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_cst_versions_computed_l1_bidder_id_fkey"
+            columns: ["computed_l1_bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_cst_versions_signature_id_fkey"
+            columns: ["signature_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_case_signatures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_goods_receipts: {
+        Row: {
+          case_id: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          created_by: string | null
+          cycle: number
+          id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          cycle: number
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          cycle?: number
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_goods_receipts_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_grn_lines: {
+        Row: {
+          accepted_qty: number
+          accepted_value: number | null
+          case_id: string
+          created_at: string
+          delivered_qty: number
+          discrepancy_reason: string | null
+          grn_id: string
+          id: string
+          item_name: string
+          line_no: number
+          ordered_qty: number
+          previously_accepted_qty: number
+          rejected_qty: number
+          unit: string | null
+          unit_rate: number
+          updated_at: string
+        }
+        Insert: {
+          accepted_qty?: number
+          accepted_value?: number | null
+          case_id: string
+          created_at?: string
+          delivered_qty?: number
+          discrepancy_reason?: string | null
+          grn_id: string
+          id?: string
+          item_name?: string
+          line_no?: number
+          ordered_qty?: number
+          previously_accepted_qty?: number
+          rejected_qty?: number
+          unit?: string | null
+          unit_rate?: number
+          updated_at?: string
+        }
+        Update: {
+          accepted_qty?: number
+          accepted_value?: number | null
+          case_id?: string
+          created_at?: string
+          delivered_qty?: number
+          discrepancy_reason?: string | null
+          grn_id?: string
+          id?: string
+          item_name?: string
+          line_no?: number
+          ordered_qty?: number
+          previously_accepted_qty?: number
+          rejected_qty?: number
+          unit?: string | null
+          unit_rate?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_grn_lines_grn_id_fkey"
+            columns: ["grn_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_goods_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_lookups: {
         Row: {
           active: boolean
@@ -2079,6 +2618,246 @@ export type Database = {
         }
         Relationships: []
       }
+      procurement_negotiation_rounds: {
+        Row: {
+          case_id: string
+          closed_at: string | null
+          committee_counter_offer: number | null
+          conducted_by: string | null
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          final_offer: number | null
+          id: string
+          notes: string | null
+          override_reason: string | null
+          payment_terms: string | null
+          round_date: string
+          round_no: number
+          status: string
+          updated_at: string
+          vendor_offer: number
+          warranty_months: number | null
+        }
+        Insert: {
+          case_id: string
+          closed_at?: string | null
+          committee_counter_offer?: number | null
+          conducted_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_days?: number | null
+          final_offer?: number | null
+          id?: string
+          notes?: string | null
+          override_reason?: string | null
+          payment_terms?: string | null
+          round_date?: string
+          round_no: number
+          status?: string
+          updated_at?: string
+          vendor_offer: number
+          warranty_months?: number | null
+        }
+        Update: {
+          case_id?: string
+          closed_at?: string | null
+          committee_counter_offer?: number | null
+          conducted_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_days?: number | null
+          final_offer?: number | null
+          id?: string
+          notes?: string | null
+          override_reason?: string | null
+          payment_terms?: string | null
+          round_date?: string
+          round_no?: number
+          status?: string
+          updated_at?: string
+          vendor_offer?: number
+          warranty_months?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_negotiation_rounds_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_negotiations"
+            referencedColumns: ["case_id"]
+          },
+        ]
+      }
+      procurement_negotiations: {
+        Row: {
+          bidder_id: string | null
+          case_id: string
+          concluded_at: string | null
+          concluded_by: string | null
+          created_at: string
+          created_by: string | null
+          final_delivery_days: number | null
+          final_payment_terms: string | null
+          final_price: number | null
+          final_warranty_months: number | null
+          mandate_instructions: string | null
+          mandate_reason: string
+          objectives: string[]
+          opening_offer: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bidder_id?: string | null
+          case_id: string
+          concluded_at?: string | null
+          concluded_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          final_delivery_days?: number | null
+          final_payment_terms?: string | null
+          final_price?: number | null
+          final_warranty_months?: number | null
+          mandate_instructions?: string | null
+          mandate_reason?: string
+          objectives?: string[]
+          opening_offer?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bidder_id?: string | null
+          case_id?: string
+          concluded_at?: string | null
+          concluded_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          final_delivery_days?: number | null
+          final_payment_terms?: string | null
+          final_price?: number | null
+          final_warranty_months?: number | null
+          mandate_instructions?: string | null
+          mandate_reason?: string
+          objectives?: string[]
+          opening_offer?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_negotiations_bidder_id_fkey"
+            columns: ["bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_negotiations_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_payment_ai_drafts: {
+        Row: {
+          case_id: string
+          generated_at: string
+          model: string | null
+          recommendation_note: string | null
+          requested_by: string | null
+        }
+        Insert: {
+          case_id: string
+          generated_at?: string
+          model?: string | null
+          recommendation_note?: string | null
+          requested_by?: string | null
+        }
+        Update: {
+          case_id?: string
+          generated_at?: string
+          model?: string | null
+          recommendation_note?: string | null
+          requested_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_payment_ai_drafts_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_payment_recommendations"
+            referencedColumns: ["case_id"]
+          },
+        ]
+      }
+      procurement_payment_recommendations: {
+        Row: {
+          accepted_value: number
+          case_id: string
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          created_by: string | null
+          invoice_amount: number
+          invoice_date: string | null
+          invoice_number: string | null
+          penalty_deductions: number
+          recommended_amount: number | null
+          remarks: string | null
+          status: string
+          updated_at: string
+          voucher_date: string | null
+          voucher_number: string | null
+        }
+        Insert: {
+          accepted_value?: number
+          case_id: string
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          invoice_amount?: number
+          invoice_date?: string | null
+          invoice_number?: string | null
+          penalty_deductions?: number
+          recommended_amount?: number | null
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          voucher_date?: string | null
+          voucher_number?: string | null
+        }
+        Update: {
+          accepted_value?: number
+          case_id?: string
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          invoice_amount?: number
+          invoice_date?: string | null
+          invoice_number?: string | null
+          penalty_deductions?: number
+          recommended_amount?: number | null
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          voucher_date?: string | null
+          voucher_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_payment_recommendations_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procurement_permissions: {
         Row: {
           key: string
@@ -2096,6 +2875,344 @@ export type Database = {
           stage?: string
         }
         Relationships: []
+      }
+      procurement_po_ai_drafts: {
+        Row: {
+          case_id: string
+          delivery_terms_draft: string | null
+          generated_at: string
+          model: string | null
+          payment_terms_draft: string | null
+          requested_by: string | null
+          special_conditions_draft: string | null
+          warranty_clause_draft: string | null
+        }
+        Insert: {
+          case_id: string
+          delivery_terms_draft?: string | null
+          generated_at?: string
+          model?: string | null
+          payment_terms_draft?: string | null
+          requested_by?: string | null
+          special_conditions_draft?: string | null
+          warranty_clause_draft?: string | null
+        }
+        Update: {
+          case_id?: string
+          delivery_terms_draft?: string | null
+          generated_at?: string
+          model?: string | null
+          payment_terms_draft?: string | null
+          requested_by?: string | null
+          special_conditions_draft?: string | null
+          warranty_clause_draft?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_po_ai_drafts_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_purchase_orders"
+            referencedColumns: ["case_id"]
+          },
+        ]
+      }
+      procurement_po_amendments: {
+        Row: {
+          amended_at: string
+          amended_by: string | null
+          case_id: string
+          changes: Json
+          id: string
+          reason: string
+          version: number
+        }
+        Insert: {
+          amended_at?: string
+          amended_by?: string | null
+          case_id: string
+          changes?: Json
+          id?: string
+          reason: string
+          version: number
+        }
+        Update: {
+          amended_at?: string
+          amended_by?: string | null
+          case_id?: string
+          changes?: Json
+          id?: string
+          reason?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_po_amendments_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_purchase_orders"
+            referencedColumns: ["case_id"]
+          },
+        ]
+      }
+      procurement_po_lines: {
+        Row: {
+          case_id: string
+          created_at: string
+          gst_pct: number
+          id: string
+          item_name: string
+          line_amount: number | null
+          line_no: number
+          quantity: number
+          unit: string | null
+          unit_rate: number
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          gst_pct?: number
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          quantity?: number
+          unit?: string | null
+          unit_rate?: number
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          gst_pct?: number
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          quantity?: number
+          unit?: string | null
+          unit_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_po_lines_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_purchase_orders"
+            referencedColumns: ["case_id"]
+          },
+        ]
+      }
+      procurement_purchase_orders: {
+        Row: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        Insert: {
+          billing_address?: string | null
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_terms?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          payment_terms?: string | null
+          penalty_clause?: string | null
+          po_no: string
+          recommended_bidder_id?: string | null
+          special_conditions?: string | null
+          status?: string
+          total_value?: number | null
+          updated_at?: string
+          vendor_ack_note?: string | null
+          vendor_ack_recorded_at?: string | null
+          vendor_ack_recorded_by?: string | null
+          vendor_ack_status?: string
+          version?: number
+          warranty_months?: number | null
+        }
+        Update: {
+          billing_address?: string | null
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_terms?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          payment_terms?: string | null
+          penalty_clause?: string | null
+          po_no?: string
+          recommended_bidder_id?: string | null
+          special_conditions?: string | null
+          status?: string
+          total_value?: number | null
+          updated_at?: string
+          vendor_ack_note?: string | null
+          vendor_ack_recorded_at?: string | null
+          vendor_ack_recorded_by?: string | null
+          vendor_ack_status?: string
+          version?: number
+          warranty_months?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_purchase_orders_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_purchase_orders_recommended_bidder_id_fkey"
+            columns: ["recommended_bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_purchase_proposals: {
+        Row: {
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          negotiated_price: number | null
+          original_evaluated_cost: number | null
+          payment_terms: string | null
+          recommendation_note: string
+          recommended_bidder_id: string | null
+          updated_at: string
+          warranty_months: number | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          delivery_days?: number | null
+          negotiated_price?: number | null
+          original_evaluated_cost?: number | null
+          payment_terms?: string | null
+          recommendation_note?: string
+          recommended_bidder_id?: string | null
+          updated_at?: string
+          warranty_months?: number | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_days?: number | null
+          negotiated_price?: number | null
+          original_evaluated_cost?: number | null
+          payment_terms?: string | null
+          recommendation_note?: string
+          recommended_bidder_id?: string | null
+          updated_at?: string
+          warranty_months?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_purchase_proposals_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "procurement_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_purchase_proposals_recommended_bidder_id_fkey"
+            columns: ["recommended_bidder_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_bidders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_quote_lines: {
+        Row: {
+          case_id: string
+          created_at: string
+          id: string
+          item_name: string
+          line_amount: number | null
+          line_no: number
+          note: string | null
+          quantity: number
+          quote_id: string
+          quoted_quantity: number | null
+          stated_amount: number | null
+          tender_item_id: string
+          unit: string | null
+          unit_rate: number | null
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          note?: string | null
+          quantity?: number
+          quote_id: string
+          quoted_quantity?: number | null
+          stated_amount?: number | null
+          tender_item_id: string
+          unit?: string | null
+          unit_rate?: number | null
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          id?: string
+          item_name?: string
+          line_amount?: number | null
+          line_no?: number
+          note?: string | null
+          quantity?: number
+          quote_id?: string
+          quoted_quantity?: number | null
+          stated_amount?: number | null
+          tender_item_id?: string
+          unit?: string | null
+          unit_rate?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_quote_lines_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "procurement_commercial_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       procurement_ref_counters: {
         Row: {
@@ -3486,6 +4603,67 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      procurement_amend_po: {
+        Args: {
+          _case_id: string
+          _delivery_date?: string
+          _delivery_terms?: string
+          _reason: string
+          _special_conditions?: string
+          _total_value?: number
+        }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_approve_cst_authority: {
+        Args: { _case_id: string; _remarks?: string }
+        Returns: {
+          actor_id: string | null
+          case_id: string
+          decided_at: string
+          id: string
+          kind: string
+          remarks: string | null
+          revision: number
+          signature_id: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_commercial_approvals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_available_actions: {
         Args: { _case_id: string }
         Returns: {
@@ -3510,6 +4688,26 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      procurement_available_actions_with_gaps: {
+        Args: { _case_id: string }
+        Returns: {
+          action: Database["public"]["Enums"]["procurement_action"]
+          chair_only: boolean
+          code: string
+          description: string
+          entry_status: string
+          gaps: string[]
+          gaps_function: string
+          guard_function: string
+          label: string
+          permission: string
+          requires_remarks: boolean
+          requires_signature: boolean
+          sort_order: number
+          stage: Database["public"]["Enums"]["procurement_stage"]
+          target_stage: Database["public"]["Enums"]["procurement_stage"]
+        }[]
       }
       procurement_bid_document_readiness: {
         Args: { _case_id: string }
@@ -3593,6 +4791,20 @@ export type Database = {
           total: number
         }[]
       }
+      procurement_case_signatures_named: {
+        Args: { _case_id: string }
+        Returns: {
+          action_code: string
+          id: string
+          image: string
+          kind: string
+          signed_at: string
+          signer_id: string
+          signer_name: string
+          signer_role: string
+          stage: Database["public"]["Enums"]["procurement_stage"]
+        }[]
+      }
       procurement_close_bidding: {
         Args: { _case_id: string; _remarks?: string }
         Returns: {
@@ -3646,9 +4858,253 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      procurement_close_negotiation_round: {
+        Args: {
+          _delivery_days?: number
+          _final_offer: number
+          _notes?: string
+          _override_reason?: string
+          _payment_terms?: string
+          _round_id: string
+          _warranty_months?: number
+        }
+        Returns: {
+          case_id: string
+          closed_at: string | null
+          committee_counter_offer: number | null
+          conducted_by: string | null
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          final_offer: number | null
+          id: string
+          notes: string | null
+          override_reason: string | null
+          payment_terms: string | null
+          round_date: string
+          round_no: number
+          status: string
+          updated_at: string
+          vendor_offer: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiation_rounds"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_commercial_assert_may_price: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_commercial_assert_open: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_commercial_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_commercial_line_comparison: {
+        Args: { _case_id: string }
+        Returns: {
+          bidder_id: string
+          estimated_amount: number
+          estimated_rate: number
+          is_line_l1: boolean
+          item_name: string
+          line_amount: number
+          line_no: number
+          line_rank: number
+          quantity: number
+          tender_item_id: string
+          unit: string
+          unit_rate: number
+          vendor_name: string
+        }[]
+      }
+      procurement_commercial_ranking: {
+        Args: { _case_id: string }
+        Returns: {
+          base_price: number
+          bidder_id: string
+          commercial_compliance: string
+          delivery_days: number
+          delivery_score: number
+          discount: number
+          eligible: boolean
+          evaluated_cost: number
+          freight: number
+          fully_priced: boolean
+          gst_amount: number
+          gst_pct: number
+          ineligible_reason: string
+          is_l1: boolean
+          loading_amount: number
+          loading_note: string
+          other_charges: number
+          payment_terms: string
+          price_score: number
+          price_source: string
+          rank: number
+          taxable_value: number
+          tec_qualified: boolean
+          vendor_id: string
+          vendor_name: string
+          warranty_months: number
+          warranty_score: number
+          weighted_score: number
+        }[]
+      }
+      procurement_commercial_reasonableness: {
+        Args: { _case_id: string }
+        Returns: {
+          estimate: number
+          estimate_gst_pct: number
+          estimate_inclusive: number
+          estimate_source: string
+          l1_bidder_id: string
+          l1_cost: number
+          l1_vendor_name: string
+          status: string
+          variance: number
+          variance_pct: number
+        }[]
+      }
+      procurement_commercial_record_recommendation: {
+        Args: {
+          _bidder_id?: string
+          _case_id: string
+          _justification_reason?: string
+          _justification_text?: string
+          _outcome: string
+          _remarks?: string
+        }
+        Returns: {
+          authority_reasons: string[]
+          authority_required: boolean
+          case_id: string
+          computed_l1_bidder_id: string | null
+          justification_reason: string | null
+          justification_text: string | null
+          outcome: string
+          recommended_at: string
+          recommended_bidder_id: string | null
+          recommended_by: string | null
+          remarks: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_commercial_recommendations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_commercial_reopen: {
+        Args: { _case_id: string; _reason: string }
+        Returns: {
+          case_id: string
+          created_at: string
+          quote_status: string
+          ranking_basis: string
+          revision: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_commercial"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_commercial_seed: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
       procurement_committee_kind_for_stage: {
         Args: { _stage: Database["public"]["Enums"]["procurement_stage"] }
         Returns: Database["public"]["Enums"]["procurement_committee_kind"]
+      }
+      procurement_cst_assert_draft: {
+        Args: { _case_id: string }
+        Returns: number
+      }
+      procurement_cst_assert_may_evaluate: {
+        Args: { _case_id: string }
+        Returns: number
+      }
+      procurement_cst_build_snapshot: {
+        Args: { _case_id: string }
+        Returns: Json
+      }
+      procurement_cst_compile: {
+        Args: { _case_id: string }
+        Returns: {
+          case_id: string
+          compiled_at: string | null
+          compiled_by: string | null
+          computed_l1_bidder_id: string | null
+          created_at: string
+          generated_on: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          ranking_basis: string | null
+          reopen_reason: string | null
+          signature_id: string | null
+          signed_off_at: string | null
+          signed_off_by: string | null
+          snapshot: Json | null
+          status: string
+          superseded_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_cst_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_cst_gaps: { Args: { _case_id: string }; Returns: string[] }
+      procurement_cst_generate_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_cst_lock: {
+        Args: { _case_id: string }
+        Returns: {
+          case_id: string
+          compiled_at: string | null
+          compiled_by: string | null
+          computed_l1_bidder_id: string | null
+          created_at: string
+          generated_on: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          ranking_basis: string | null
+          reopen_reason: string | null
+          signature_id: string | null
+          signed_off_at: string | null
+          signed_off_by: string | null
+          snapshot: Json | null
+          status: string
+          superseded_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_cst_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       procurement_cycle_time: {
         Args: never
@@ -3668,6 +5124,10 @@ export type Database = {
           open_cases: number
           total_value: number
         }[]
+      }
+      procurement_dpc_constitute_committee: {
+        Args: { _case_id: string }
+        Returns: undefined
       }
       procurement_float_tender: {
         Args: { _case_id: string; _remarks?: string }
@@ -3721,6 +5181,106 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      procurement_grn_assert_may_record: {
+        Args: { _case_id: string }
+        Returns: {
+          case_id: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          created_by: string | null
+          cycle: number
+          id: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_goods_receipts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_grn_assert_open: {
+        Args: { _case_id: string }
+        Returns: {
+          case_id: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          created_by: string | null
+          cycle: number
+          id: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_goods_receipts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_grn_close_cycle_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_grn_forward_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_grn_seed: { Args: { _case_id: string }; Returns: undefined }
+      procurement_grn_summary: {
+        Args: { _case_id: string }
+        Returns: {
+          fully_received: boolean
+          item_name: string
+          line_no: number
+          ordered_qty: number
+          total_accepted_qty: number
+          total_accepted_value: number
+          total_delivered_qty: number
+          total_rejected_qty: number
+          unit: string
+          unit_rate: number
+        }[]
+      }
+      procurement_guard_commercial_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_cst_generate_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_cst_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_grn_close_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_grn_forward_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_payment_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_pnc_agreed: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_po_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
+      }
+      procurement_guard_proposal_ready: {
+        Args: { _case_id: string; _payload?: Json }
+        Returns: boolean
       }
       procurement_guard_requisition_ready: {
         Args: { _case_id: string; _payload?: Json }
@@ -3844,6 +5404,280 @@ export type Database = {
         }
       }
       procurement_next_ref: { Args: { _prefix: string }; Returns: string }
+      procurement_open_negotiation_round: {
+        Args: {
+          _case_id: string
+          _committee_counter_offer?: number
+          _delivery_days?: number
+          _notes?: string
+          _payment_terms?: string
+          _vendor_offer: number
+          _warranty_months?: number
+        }
+        Returns: {
+          case_id: string
+          closed_at: string | null
+          committee_counter_offer: number | null
+          conducted_by: string | null
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          final_offer: number | null
+          id: string
+          notes: string | null
+          override_reason: string | null
+          payment_terms: string | null
+          round_date: string
+          round_no: number
+          status: string
+          updated_at: string
+          vendor_offer: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiation_rounds"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_payment_assert_may_record: {
+        Args: { _case_id: string }
+        Returns: {
+          accepted_value: number
+          case_id: string
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          created_by: string | null
+          invoice_amount: number
+          invoice_date: string | null
+          invoice_number: string | null
+          penalty_deductions: number
+          recommended_amount: number | null
+          remarks: string | null
+          status: string
+          updated_at: string
+          voucher_date: string | null
+          voucher_number: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_payment_recommendations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_payment_assert_open: {
+        Args: { _case_id: string }
+        Returns: {
+          accepted_value: number
+          case_id: string
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          created_by: string | null
+          invoice_amount: number
+          invoice_date: string | null
+          invoice_number: string | null
+          penalty_deductions: number
+          recommended_amount: number | null
+          remarks: string | null
+          status: string
+          updated_at: string
+          voucher_date: string | null
+          voucher_number: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_payment_recommendations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_payment_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_payment_seed: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_pnc_agreement_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_pnc_assert_may_negotiate: {
+        Args: { _case_id: string }
+        Returns: {
+          bidder_id: string | null
+          case_id: string
+          concluded_at: string | null
+          concluded_by: string | null
+          created_at: string
+          created_by: string | null
+          final_delivery_days: number | null
+          final_payment_terms: string | null
+          final_price: number | null
+          final_warranty_months: number | null
+          mandate_instructions: string | null
+          mandate_reason: string
+          objectives: string[]
+          opening_offer: number | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_pnc_assert_open: {
+        Args: { _case_id: string }
+        Returns: {
+          bidder_id: string | null
+          case_id: string
+          concluded_at: string | null
+          concluded_by: string | null
+          created_at: string
+          created_by: string | null
+          final_delivery_days: number | null
+          final_payment_terms: string | null
+          final_price: number | null
+          final_warranty_months: number | null
+          mandate_instructions: string | null
+          mandate_reason: string
+          objectives: string[]
+          opening_offer: number | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_pnc_constitute_committee: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_pnc_seed: { Args: { _case_id: string }; Returns: undefined }
+      procurement_po_assert_may_edit: {
+        Args: { _case_id: string }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_po_assert_may_manage: {
+        Args: { _case_id: string }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_po_assert_open: {
+        Args: { _case_id: string }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_po_gaps: { Args: { _case_id: string }; Returns: string[] }
+      procurement_po_seed: { Args: { _case_id: string }; Returns: undefined }
+      procurement_proposal_gaps: {
+        Args: { _case_id: string }
+        Returns: string[]
+      }
+      procurement_proposal_seed: {
+        Args: { _case_id: string }
+        Returns: undefined
+      }
       procurement_publish_boq: { Args: { _case_id: string }; Returns: number }
       procurement_record_decision: {
         Args: {
@@ -3876,6 +5710,91 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      procurement_record_payment_ai_draft: {
+        Args: { _case_id: string; _model: string; _recommendation_note: string }
+        Returns: {
+          case_id: string
+          generated_at: string
+          model: string | null
+          recommendation_note: string | null
+          requested_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_payment_ai_drafts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_record_po_ai_draft: {
+        Args: {
+          _case_id: string
+          _delivery_terms_draft: string
+          _model: string
+          _payment_terms_draft: string
+          _special_conditions_draft: string
+          _warranty_clause_draft: string
+        }
+        Returns: {
+          case_id: string
+          delivery_terms_draft: string | null
+          generated_at: string
+          model: string | null
+          payment_terms_draft: string | null
+          requested_by: string | null
+          special_conditions_draft: string | null
+          warranty_clause_draft: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_po_ai_drafts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_record_po_vendor_ack: {
+        Args: { _case_id: string; _note?: string; _status: string }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_record_quote_schedule: {
+        Args: {
+          _lines: Json
+          _quote_id: string
+          _source?: string
+          _stated_total?: number
+        }
+        Returns: Json
       }
       procurement_record_tec_ai_suggestion: {
         Args: {
@@ -3982,6 +5901,243 @@ export type Database = {
         }
         Returns: boolean
       }
+      procurement_save_cst_scrutiny: {
+        Args: {
+          _case_id: string
+          _item_key: string
+          _remarks?: string
+          _status: string
+        }
+        Returns: {
+          case_id: string
+          item_key: string
+          remarks: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_cst_scrutiny"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_grn_line: {
+        Args: {
+          _accepted_qty: number
+          _delivered_qty: number
+          _discrepancy_reason?: string
+          _line_id: string
+          _rejected_qty: number
+        }
+        Returns: {
+          accepted_qty: number
+          accepted_value: number | null
+          case_id: string
+          created_at: string
+          delivered_qty: number
+          discrepancy_reason: string | null
+          grn_id: string
+          id: string
+          item_name: string
+          line_no: number
+          ordered_qty: number
+          previously_accepted_qty: number
+          rejected_qty: number
+          unit: string | null
+          unit_rate: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_grn_lines"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_negotiation_mandate: {
+        Args: {
+          _case_id: string
+          _instructions?: string
+          _objectives?: string[]
+          _reason: string
+        }
+        Returns: {
+          bidder_id: string | null
+          case_id: string
+          concluded_at: string | null
+          concluded_by: string | null
+          created_at: string
+          created_by: string | null
+          final_delivery_days: number | null
+          final_payment_terms: string | null
+          final_price: number | null
+          final_warranty_months: number | null
+          mandate_instructions: string | null
+          mandate_reason: string
+          objectives: string[]
+          opening_offer: number | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_payment_recommendation: {
+        Args: {
+          _case_id: string
+          _invoice_amount: number
+          _invoice_date: string
+          _invoice_number: string
+          _penalty_deductions: number
+          _remarks: string
+          _voucher_date: string
+          _voucher_number: string
+        }
+        Returns: {
+          accepted_value: number
+          case_id: string
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          created_by: string | null
+          invoice_amount: number
+          invoice_date: string | null
+          invoice_number: string | null
+          penalty_deductions: number
+          recommended_amount: number | null
+          remarks: string | null
+          status: string
+          updated_at: string
+          voucher_date: string | null
+          voucher_number: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_payment_recommendations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_po: {
+        Args: {
+          _billing_address: string
+          _case_id: string
+          _delivery_address: string
+          _delivery_date: string
+          _delivery_terms: string
+          _payment_terms: string
+          _penalty_clause: string
+          _special_conditions: string
+          _warranty_months: number
+        }
+        Returns: {
+          billing_address: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_terms: string | null
+          issued_at: string | null
+          issued_by: string | null
+          payment_terms: string | null
+          penalty_clause: string | null
+          po_no: string
+          recommended_bidder_id: string | null
+          special_conditions: string | null
+          status: string
+          total_value: number | null
+          updated_at: string
+          vendor_ack_note: string | null
+          vendor_ack_recorded_at: string | null
+          vendor_ack_recorded_by: string | null
+          vendor_ack_status: string
+          version: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_proposal: {
+        Args: { _case_id: string; _recommendation_note: string }
+        Returns: {
+          case_id: string
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          negotiated_price: number | null
+          original_evaluated_cost: number | null
+          payment_terms: string | null
+          recommendation_note: string
+          recommended_bidder_id: string | null
+          updated_at: string
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_purchase_proposals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      procurement_save_quote: {
+        Args: {
+          _base_price?: number
+          _bidder_id: string
+          _commercial_compliance?: string
+          _discount?: number
+          _freight?: number
+          _gst_pct?: number
+          _loading_amount?: number
+          _loading_note?: string
+          _other_charges?: number
+          _price_source?: string
+          _remarks?: string
+        }
+        Returns: {
+          base_price: number
+          bidder_id: string
+          case_id: string
+          commercial_compliance: string
+          created_at: string
+          created_by: string | null
+          discount: number
+          evaluated_cost: number | null
+          freight: number
+          fully_priced: boolean
+          gst_amount: number | null
+          gst_pct: number
+          id: string
+          loading_amount: number
+          loading_note: string | null
+          other_charges: number
+          price_source: string
+          remarks: string | null
+          schedule_captured_at: string | null
+          schedule_issues: Json
+          schedule_source: string | null
+          stated_total: number | null
+          taxable_value: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_commercial_quotes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_search_case_chunks: {
         Args: {
           _bidder_id?: string
@@ -4043,6 +6199,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      procurement_set_ranking_basis: {
+        Args: { _basis: string; _case_id: string }
+        Returns: {
+          case_id: string
+          created_at: string
+          quote_status: string
+          ranking_basis: string
+          revision: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_commercial"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       procurement_stage_aging: {
         Args: never
         Returns: {
@@ -4098,6 +6271,10 @@ export type Database = {
       }
       procurement_sync_case_cost: {
         Args: { _case_id: string }
+        Returns: undefined
+      }
+      procurement_sync_quote_price: {
+        Args: { _quote_id: string }
         Returns: undefined
       }
       procurement_tec_assert_open: {
@@ -4160,6 +6337,43 @@ export type Database = {
           _to: Database["public"]["Enums"]["procurement_stage"]
         }
         Returns: boolean
+      }
+      procurement_update_negotiation_round: {
+        Args: {
+          _committee_counter_offer?: number
+          _delivery_days?: number
+          _notes?: string
+          _payment_terms?: string
+          _round_id: string
+          _vendor_offer: number
+          _warranty_months?: number
+        }
+        Returns: {
+          case_id: string
+          closed_at: string | null
+          committee_counter_offer: number | null
+          conducted_by: string | null
+          created_at: string
+          created_by: string | null
+          delivery_days: number | null
+          final_offer: number | null
+          id: string
+          notes: string | null
+          override_reason: string | null
+          payment_terms: string | null
+          round_date: string
+          round_no: number
+          status: string
+          updated_at: string
+          vendor_offer: number
+          warranty_months: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "procurement_negotiation_rounds"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       search_documents_by_embedding: {
         Args: {

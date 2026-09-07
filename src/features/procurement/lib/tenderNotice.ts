@@ -179,7 +179,12 @@ export function noticeToPdf(notice: NoticeSnapshot, heading: string): Blob {
     page();
     doc.setFont("helvetica", "bold").setFontSize(9.5).text(term.label, marginX, y);
     doc.setFont("helvetica", "normal");
-    for (const line of doc.splitTextToSize(term.value, width - 150) as string[]) {
+    // jsPDF's built-in "helvetica" carries no ₹ glyph and silently
+    // substitutes a stray superscript in its place; noticeTerms() is shared
+    // with the on-screen notice, where a web font renders ₹ correctly, so
+    // the swap happens here rather than in the shared value itself.
+    const value = term.value.replace(/₹/g, "Rs. ");
+    for (const line of doc.splitTextToSize(value, width - 150) as string[]) {
       doc.text(line, marginX + 150, y);
       y += 13;
     }
@@ -227,7 +232,7 @@ export function noticeToPdf(notice: NoticeSnapshot, heading: string): Blob {
     if (notice.estimated_value) {
       page();
       doc.setFont("helvetica", "bold").setFontSize(10);
-      doc.text(`Estimated value: ${formatMoney(notice.estimated_value)}`, marginX, y);
+      doc.text(`Estimated value: ${formatMoney(notice.estimated_value).replace("₹", "Rs. ")}`, marginX, y);
       y += 16;
     }
   }

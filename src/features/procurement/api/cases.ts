@@ -7,6 +7,7 @@ import type {
   ProcurementCase,
   ProcurementStage,
   StageAction,
+  StageActionWithGaps,
   StageConfig,
   StageHistoryEntry,
 } from "../types";
@@ -99,6 +100,14 @@ export async function fetchClarifications(caseId: string): Promise<Clarification
 /** What this user may do on this case right now, per the database. */
 export async function fetchAvailableActions(caseId: string): Promise<StageAction[]> {
   return unwrap(await supabase.rpc("procurement_available_actions", { _case_id: caseId }));
+}
+
+/** The same actions, each carrying what its own gate still lists as
+ * missing — resolved server-side the same way the guard itself is, so the
+ * action bar can grey out a button before pressing it does nothing but
+ * return a refusal. */
+export async function fetchAvailableActionsWithGaps(caseId: string): Promise<StageActionWithGaps[]> {
+  return unwrap(await supabase.rpc("procurement_available_actions_with_gaps", { _case_id: caseId }));
 }
 
 export type OpenCaseInput = {

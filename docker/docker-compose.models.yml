@@ -192,6 +192,9 @@ services:
       OCR_BASE_URL: http://vllm-ocr:8000/v1
       OCR_MODEL: ${OCR_MODEL:-chandra-ocr-2}
       OCR_MAX_TOKENS: ${OCR_MAX_TOKENS:-16384}
+      # Downscale ceiling for the page image. A 200-DPI A4 page is ~3.8k image
+      # tokens unclamped, which plus OCR_MAX_TOKENS overruns --max-model-len.
+      OCR_MAX_IMAGE_PIXELS: ${OCR_MAX_IMAGE_PIXELS:-2359296}
       OCR_REASONING_EFFORT: ${OCR_REASONING_EFFORT:-}
       # Match vllm-ocr's own concurrency ceiling so the relay doesn't queue
       # more parallel requests than the server will actually run at once.

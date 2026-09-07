@@ -29,14 +29,25 @@ It is reached from its own door on the landing page — not from the document wo
 - The tender stage in full: the tender record and its lifecycle, the vendor register, the invitation list, a published bill of quantities frozen at floating, the roster of recorded bids with their earnest money, corrigenda that can be issued and withdrawn, a notice generated from a frozen snapshot and filed on the case, and a gate the database enforces before the committee sees anything.
 - The technical evaluation stage in full: a committee that constitutes itself the moment a case arrives, a four-item governance checklist shared by the whole committee, an unsigned per-member reading of every bid (score, compliance, a qualified verdict), a computed consensus a chair can weigh members against, an on-request AI-suggested reading of a bidder's own papers against the tender's requirements that a member can accept or override, and the chair's own separate, unsigned final qualification call — the one thing that gates recommending the case for commercial evaluation, which is itself the signed action.
 - `/procurement/admin`: the master data behind every requisition — the seven lookup lists, the budget ledger and the vendor register — editable in the portal instead of in `psql`.
+- The commercial evaluation stage in full: bids opened by the head of division's own signed decision, priced item by item against the published bill with the evaluated cost derived rather than typed, a ranking on a switchable basis, an item-wise comparison the reference this process was studied from never renders, and a gate the database enforces before the comparative statement is drawn up.
+- The comparative statement in full: compiled on arrival, a scrutiny checklist for the record, a recommendation that must justify any departure from the computed L1, a competent authority's clearance for an override or an award over the estimate, the head of division's sign-off, and a lock that freezes an immutable, versioned snapshot — reopening supersedes a version rather than editing it.
+- The price negotiation stage in full: a negotiation record seeded on arrival against the purchase committee's own recommended bidder, a stated mandate before anything can be put to that vendor, one round of bargaining open at a time with a ceiling on the committee's own counter-offer, a stated reason required to settle above what the vendor itself offered, and an agreement that is recorded as its own figure alongside the locked comparative statement rather than overwriting it.
+- The purchase proposal stage in full: a decision packet seeded on arrival — the negotiated vendor, the original evaluated cost against the negotiated price if negotiation ran, the terms, and the purchase officer's own written recommendation — gating the approving authority's decision.
+- The purchase order stage in full: an order seeded from the approved proposal with its own priced lines, a model-drafted set of clause paragraphs a purchase officer can accept into the record, a gate before issuing, the vendor's response recorded on their behalf, amendments to an issued order logged with a reason, and a signed order generated as a filed PDF carrying every signature on the case's own trail.
+- The goods receipt stage in full: a receipt seeded from the issued order's own lines, one delivery cycle open at a time with accepted/rejected quantities and a reasoned discrepancy where one exists, the next cycle reopening automatically while a balance remains, and forwarding to payment gated on the current cycle being closed rather than on full quantity.
+- The payment recommendation stage in full: a recommendation seeded against what goods receipt accepted, a computed recommended amount after any penalty deduction, and a gate requiring a real invoice on file before payment can be cleared and the case closed.
 - Demo accounts, one per role, seeded automatically.
 
 **Not built yet (later slices of the plan).**
 
-- The working detail of the stages after technical evaluation: quotations and the comparative statement, committee meetings and votes, negotiation rounds, proposals, purchase orders, goods receipt notes, payment recommendations. The stages exist and a case moves through all of them; each one currently shows the case summary and the requisition it came from rather than its own working form.
+- The purchase committee's own resolution as a record of its own. `dpc.to_pnc` and `dpc.to_proposal` still carry it as a plain remark rather than a structured vote — the one stage left with no working detail of its own, now that every stage from the requisition through payment recommendation has one.
+- Goods receipt's own inspection/QA step. The reference's schema anticipates a separate inspector's verdict distinct from whoever recorded receipt; its own real workflow never exercises it (forwarding to payment there explicitly marks inspection "Skipped"), so it was left out here rather than built and then wired to nothing.
+- Splitting "approve the proposal" from "raise the purchase order" into two steps by two roles, the way the reference actually does it (a draft PO staged, then a separate PO officer issues it). `proposal.approve` here still moves straight to `purchase_order` in one press.
+- The other three AI features specified for the commercial desk (§11) are still not migrated; the purchase order's own clause-drafting feature is the second AI feature actually built, after reading a bill of quantities out of a file.
+- The three AI features designed for the commercial desk — reading a price schedule out of a bidder's file, a price-reasonableness and anomaly review, and a drafted scrutiny note — are specified but not migrated; a manual paste-based schedule reader stands in for the first.
 - Role assignment. Master data has a screen now; who holds which desk is still database work.
-- Case-specific committee rosters for DPC and PNC. TEC's own committee now constitutes itself on arrival (§4.5); DPC and PNC still need the manual step in §10.4.
-- Stage guards beyond the requisition, the tender and technical evaluation. `procurement_stage_actions.guard_function` is wired and `mpr.submit`, `tender.to_tec`, `tender.to_commercial` and `tec.recommend` use it; the later stages have no preconditions yet beyond permission and remarks.
+- Case-specific committee rosters. TEC, DPC and PNC all now constitute themselves org-wide on arrival (§4.5); a roster scoped to the case's own department or category is still database work.
+- Stage guards beyond the requisition, the tender, technical evaluation, commercial evaluation and the comparative statement. `procurement_stage_actions.guard_function` is wired and `mpr.submit`, `tender.to_tec`, `tender.to_commercial`, `tec.recommend`, `commercial.to_cst` and `cst.to_dpc` use it; the purchase committee onward has no preconditions yet beyond permission and remarks.
 - SLA escalation. `sla_hours` and `escalation_role` are stored per stage but nothing acts on them.
 
 ---
@@ -317,7 +328,7 @@ It is an `AFTER UPDATE OF stage` trigger on the case rather than a step inside t
 
 **A member's reading is written through a function rather than a table write — but it is not signed.** `procurement_tec_evaluations` carries no client-writable row-level security policy at all: the table is read-only from the API, and the only way to put a row in it is `procurement_submit_tec_evaluation`, `SECURITY DEFINER`, which checks the caller holds `tec.evaluate` or `tec.chair` and then upserts the row. It does *not* require a signature, on reflection: the reading does not move the case, only the chair's separate qualification call does that, and `tec.recommend` already carries its own required signature (and has since the foundation). Signing every reading was ceremony with nothing riding on it; there is nothing to get wrong about a missing RLS policy here regardless, because there is deliberately no policy to be missing.
 
-**The TEC committee constitutes itself.** Chair-only actions check both the `tec.chair` permission and `is_procurement_committee_chair()` — the second reads an actual `procurement_committees` row for that case, and nothing in this product's own UI offers a way to create one. Left as a manual `psql` step (§10.4 below still describes it for DPC and PNC), a real chair who had qualified a bidder would hold every permission the engine asks for and still see an empty action bar, indistinguishable from the engine being broken. TEC is the one committee stage this product now drives end to end through its own screens, so it is the one that no longer waits on that step: the moment a case arrives at `tec`, a trigger constitutes a one-cycle TEC committee and seats every org-wide holder of `tec_chairman` (as chair) and `tec_member`. That is a real, stated limit — a large organisation with several TEC chairs would want a committee scoped to the case's own department or category, not every chair in the org — but it is the same shape of limit case-specific role assignment already carries everywhere else in this product, and it is what actually lets a chair press a button instead of asking someone to run SQL. DPC and PNC are untouched.
+**Every committee stage now constitutes itself.** Chair-only actions check both the stage's own chair permission and `is_procurement_committee_chair()` — the second reads an actual `procurement_committees` row for that case, and a chair who held every permission the engine asked for would still see an empty action bar the moment that row did not exist, indistinguishable from the engine being broken. TEC was the first stage fixed this way, and DPC and PNC followed once each became a stage this product expects to be driven entirely through its own screens rather than from a `psql` prompt: the moment a case arrives at `tec`, `dpc` or `pnc`, a trigger constitutes a one-cycle committee and seats every org-wide holder of that stage's chair role (as chair) and member role. That is a real, stated limit shared by all three — a large organisation with several TEC chairs, or several divisions each running their own DPC, would want a committee scoped to the case's own department or category, not every chair in the org — but it is the same shape of limit case-specific role assignment already carries everywhere else in this product, and it is what actually lets a chair press a button instead of asking someone to run SQL.
 
 **The chair's call is a function too, for a narrower reason.** `procurement_bidders.tec_qualified` is a field, not a transition, so in principle it could sit under an ordinary row-level security write policy the way the tender's own columns do. It does not, because a column-scoped policy does not exist in Postgres — a policy is row-level, and the bidder row already carries fields other roles legitimately write (the bid amount, at the tender desk). `procurement_set_bidder_qualification` is the narrow function that exists instead: it checks `tec.chair`, checks the case is actually at this desk, and writes exactly those four columns. The existing bidder write policy already stops matching once the case leaves the tender stage, so a plain client `UPDATE` at this point changes nothing regardless — checked directly in both test scripts, because "changes nothing" is exactly the failure mode that bit this project before and deserves an assertion, not an assumption.
 
@@ -335,13 +346,109 @@ It is an `AFTER UPDATE OF stage` trigger on the case rather than a step inside t
 
 It refuses rather than guesses when there is nothing to work from: no papers filed, papers still being read, or a tender with no eligibility, scope or bill text to check against. The model is told to mark a requirement "unclear" or "not_met" when the excerpts do not address it — never "met" from silence — and `enable_thinking: false` is set the same way `translate-document` sets it, because Qwen3.5 otherwise reasons at length in plain prose that both burns the token budget and leaves nothing but chatter for the response parser.
 
-### 4.6 The activity timeline
+### 4.6 The commercial evaluation stage in detail
+
+Two of the limits stated since the tender slice were one limit: a bidder carried a single lump amount, so nothing could compare two bids line by line, and `procurement_tender_summary.lowest_bid` was never a ranking. This is the slice that closes both, by pricing each bid against the published bill and deriving an evaluated cost nobody has to compute by hand.
+
+**Seeded on arrival, never repaired on read.** The moment a case reaches `commercial`, a trigger creates one `procurement_commercial` row and one `procurement_commercial_quotes` row per bidder still `received`, carrying across the tender desk's own `bid_amount` and `gst_pct` as a starting point. That is the whole of what arrival does. Nothing here re-derives a stale price on every read the way self-healing designs elsewhere do -- a read is a read, and the officer's own save is the only thing that changes a quote.
+
+**The evaluated cost is arithmetic, not a number typed once and trusted forever.** `procurement_commercial_quotes` carries `base_price`, `gst_pct`, `freight`, `other_charges`, `discount` and a `loading_amount` with a mandatory `loading_note` -- a loading with no stated reason is refused outright, by a `CHECK` constraint, not a form validation. `gst_amount`, `taxable_value` and `evaluated_cost` are all `GENERATED` columns: tax is charged on the base price alone, never on freight or other charges, and "did they quote inclusive of tax?" is arithmetic rather than an argument three stages later -- the same reasoning `procurement_bidders.bid_amount_gross` has carried since the tender slice.
+
+**Pricing is item-wise, and a generated column enforces "the published quantity wins."** `procurement_quote_lines` carries one row per bidder per published bill line, and its `quantity` is copied from `procurement_tender_items` by a trigger -- never accepted from the caller -- so a bidder's own stated quantity can only ever be *evidence* (`quoted_quantity`), never an input to the arithmetic. `procurement_record_quote_schedule(quote, lines, source, stated_total)` reads a whole sheet in one transaction: it matches each row to a published line by id, then by exact name, then by substring containment, and raises whatever does not reconcile as one of seven issue codes -- `unmatched_row`, `missing_line`, `missing_rate` (the two errors), `quantity_mismatch`, `amount_mismatch`, `duplicate_line` and `total_mismatch` (warnings, shown but not blocking). When a rate is absent but an amount is given, the rate is derived as `amount / quantity`; when a submitted amount disagrees with quantity times rate, the generated column's arithmetic wins, not the sheet's. Only once **every** published line carries a rate does the schedule's own total override the bidder's lump `base_price` -- a partly priced sheet leaves the typed figure alone, because a half-priced schedule is not yet a price.
+
+**A corrigendum can outlive the schedule that was priced against it.** `procurement_issue_corrigendum` amends the published bill by deleting and re-inserting `procurement_tender_items`, so `procurement_quote_lines` deliberately carries no foreign key to it -- an `ON DELETE CASCADE` there would silently destroy every firm's priced schedule the moment a deadline was extended. Instead the line's identity is copied in at write time and a stale schedule is a visible, reportable state: `procurement_commercial_gaps` names it as *"A price schedule read against the bill as it now stands, since a corrigendum changed it"* rather than letting it fail silently or vanish.
+
+**The ranking is computed on read, never stored.** `procurement_commercial_ranking(case)` is the one place L1 is decided, on whichever basis the case has chosen -- `evaluated_cost` by default, or `base_price`, or a `weighted_score` blending price, delivery and warranty (`0.50` times price plus `0.25` times delivery plus `0.25` times warranty), computed from the integers already on `procurement_bidders` rather than parsed out of free text. A bid is eligible to be ranked only once it is priced, called compliant or conditionally compliant, and not disqualified -- read as `tec_qualified IS DISTINCT FROM false`, not `= true`, because a case that skipped technical evaluation entirely (`tender.to_commercial`) carries `NULL` on every bidder, and reading that as a disqualification would make the whole skip route unusable. Ineligible bids sort last with a stated reason rather than disappearing. `procurement_commercial_line_comparison(case)` is the same idea per published line: the cross-bidder matrix the reference this process was studied from never renders, because it prices bidders as a single lump sum. An item's own cheapest rate need not belong to the bidder who is L1 overall -- that is the reason the matrix exists, not a curiosity of the data.
+
+**Reasonableness is one check, against the estimate the bidders actually quoted against.** `procurement_commercial_reasonableness(case)` reads `procurement_tenders.estimated_value` -- the published bill's total, frozen at floating -- grossed up by the tender's own `gst_pct`, and compares it to the computed L1's evaluated cost. There is no last-purchase-price and no market-rate benchmark anywhere in this schema; the position is `within`, `over`, or `no_estimate`, and it says which.
+
+**The head of division has something to press.** `commercial.opening_approve` and `commercial.opening_return` are ordinary stage actions -- holding the case, not moving it -- on `commercial.opening.approve`, the permission this role has held since the foundation with nothing to spend it on. Their write is not a table a client can reach: `procurement_commercial_approval_from_event()` is a trigger on `procurement_case_events` that turns the decision into a row in `procurement_commercial_approvals`, because a holding action leaves no `cases.stage` change for the usual `AFTER UPDATE OF stage` hook to catch, and `procurement_record_decision` writes no table but the audit trail. The approval is keyed on the commercial record's own `revision`, which is what lets a reopened case's sign-offs disappear for free -- the new revision simply has no row.
+
+**The gate.** `procurement_commercial_gaps` refuses `commercial.to_cst` until the opening is approved, at least one bid is priced, every received bid carries a compliance call, and no schedule has gone stale under a corrigendum.
+
+### 4.7 The comparative statement in detail
+
+The statement is not a table of its own figures. It is the frozen record of what the commercial desk had already worked out, at the moment a human certified it -- which is why locking it is the interesting part, not compiling it.
+
+**Compiled on arrival, as a draft that computes.** The moment a case reaches `cst`, a trigger opens `procurement_cst_versions` at `version = 1`, `status = 'draft'`, and seeds `procurement_cst_scrutiny` with five fixed questions -- arithmetic verified, taxes and loadings consistent, terms brought to par, the estimate comparison recorded, deviations documented -- the same shape as the TEC committee's checklist, and for the same reason: on file, not the gate. A draft version answers every read fresh from `procurement_commercial_ranking` and the schedule; nothing about it is stored until it locks.
+
+**The recommendation is made here, and DPC inherits it rather than originating it.** `procurement_commercial_record_recommendation` writes one live row per case plus an append-only history entry for every change -- previous vendor, new vendor, previous reason, new reason, who, when. Recommending anyone other than the computed L1 is refused by a table `CHECK` constraint, not only by the function that writes it: it needs a reason from a fixed category (delivery lead time, lifecycle cost benefit, OEM support, risk mitigation, technical or warranty superiority, non-responsiveness, budget excess, or other) and at least ten characters of justification. An award above the approved estimate -- override or not -- additionally requires a competent authority's clearance, `procurement_approve_cst_authority`, before the case can reach the committee; that clearance is its own approval kind, deliberately not folded into the routine sign-off, because signing off on a departure from L1 is a distinct assertion and should not be a side effect of a press about something else.
+
+**The lock is what actually freezes the statement, and it happens after the case has already moved.** `cst.to_dpc` carries a guard and signature like any other hand-off, but the freeze itself -- `procurement_cst_lock` -- runs from an `AFTER UPDATE OF stage` trigger once the case has already reached `dpc`, the same "single chokepoint" shape as the tender desk's own bidding-close. That ordering means the lock function cannot ask whether the case is "at" `cst`, because by the time it runs the case is honestly no longer there; it instead looks for a live draft version to freeze, and trusts that the guard already refused the hand-off if there was nothing worth freezing. What gets written into `snapshot` is everything a reader must be able to see without re-deriving it later: every bidder's full figures, the item-wise matrix, the reasonableness position, the recommendation with its justification, and both sign-offs -- with names resolved at freeze time, because a vendor or a signer can be renamed afterwards and the statement must not silently re-render under a new one.
+
+**Reopening supersedes a version; it does not edit one.** `procurement_commercial_reopen` (reason mandatory) marks the live version `superseded`, opens the next as a fresh draft, unlocks the quotes for correction, and retires every sign-off -- because each is keyed on the version it was given against, a new version simply starts with none. The recommendation's own history survives a reopen; only the live pointer moves. A case returned from `dpc` or from `cst.signoff_return` reopens automatically, from the same `AFTER UPDATE OF stage` trigger that seeds the statement in the first place, so an administrator moving a case by hand triggers the identical behaviour as a chair's own return.
+
+**The gate.** `procurement_cst_gaps` refuses `cst.to_dpc` until a recommendation is on file, any departure from L1 is justified, any required authority clearance is recorded, and the head of division has signed the statement off (`cst.signoff`, itself a signed action). `cst.to_dpc` stays unsigned deliberately -- the statement it carries is already signed, and signing the hand-off again would be ceremony over the same fact twice.
+
+### 4.8 The price negotiation stage in detail
+
+Three stage actions (`pnc.agreed`, `pnc.return`, `pnc.failed`) existed from the foundation slice with nothing behind them — a chair's signature on an empty stage. This slice gives the desk something to actually negotiate over, built from the same three domain facts a fourteen-stage regulated purchase process settles regardless of which product implements it: negotiation targets one named vendor, it runs in bounded rounds rather than a free-for-all, and its result sits beside the comparative statement rather than inside it.
+
+**Seeded on arrival, against one vendor.** The moment a case reaches `pnc`, a trigger creates one `procurement_negotiations` row targeting the purchase committee's own recommended bidder — or, if the committee's resolution named nobody in particular, the computed L1 — with `opening_offer` snapshotted from that bidder's evaluated cost at that moment, so a round always has something fixed to bargain against even if the comparative statement is later reopened. A case that returns to `pnc` a second time (`dpc.return` from here, then `dpc.to_pnc` again) keeps its mandate and its round history and simply flips back to `open`; only a negotiation that was returned rather than concluded does that; one that already reached agreement or failure never resets.
+
+**Nothing opens without a stated mandate.** `procurement_save_negotiation_mandate` records why the committee is negotiating and at least one objective; `procurement_open_negotiation_round` refuses to open the first round until both are on file. This is the one piece of the negotiation record that is not a plain per-round fact — it is the committee's own standing brief for the whole negotiation, set once and revisable, not re-argued every round.
+
+**One round open at a time, with a ceiling on the counter and on the close.** `procurement_negotiation_rounds` carries the vendor's offer, the committee's counter, and — once closed — the settled figure for that round, plus whatever else moved alongside price (delivery days, payment terms, warranty months) and a free-text note of the discussion. A partial unique index refuses a second open round outright; a `CHECK` constraint refuses a counter-offer above the vendor's own current offer, because a "counter" asking for more than the vendor is already asking is not a negotiation; and closing a round above the vendor's own offer — accepting an increase, say for added scope — is still possible but only with a stated `override_reason`, enforced both by the closing function and by a second `CHECK` constraint underneath it. These are plain committee records, not signed decisions: the signature sits on `pnc.agreed`, `pnc.return` and `pnc.failed` themselves, the same division this schema draws everywhere between a committee's own working notes and the transition that acts on them — which is also why neither table carries a client write policy at all; every write goes through the RPCs above, the same reasoning as `procurement_quote_lines` and `procurement_cst_scrutiny`.
+
+**Agreement is read from the rounds, not typed again.** `pnc.agreed`'s guard (`procurement_pnc_agreement_gaps`) refuses to let the case move until the mandate is on file, no round is left open, and at least one closed round carries a settled figure. On the action itself, a trigger on `procurement_case_events` reads the last such round and writes its figure and terms onto `procurement_negotiations` as `final_price` and the matching `final_*` columns, alongside who concluded it and when. This does **not** touch the locked comparative statement — `procurement_cst_versions` stays exactly what the committee evaluated; the negotiated price is a separate, later fact a purchase proposal would read next to the original L1 figure, not in place of it. `pnc.return` and `pnc.failed` write the negotiation's own `status` (`returned`, `failed`) and nothing else — a return leaves the round history intact for the next attempt, and a failure is terminal, matching the case closing outright.
+
+**None of this is the reference's own shape.** Studying how the process this workflow is modelled on runs its own negotiation committee surfaced the three facts above — one vendor, bounded rounds with a counter-offer ceiling, and a result recorded apart from the statement — but none of its field names, screens, multi-round discussion arrays, document templates or committee-mandate wording carried over. What is here is those three facts, expressed in this schema's own tables and this schema's own gate/guard convention.
+
+### 4.9 The purchase proposal stage in detail
+
+Three bare actions (`proposal.approve`, `proposal.revise`, `proposal.refuse`) existed from the foundation slice, gated only by permission and remarks — the approving authority saw the case summary and the requisition, never the figure they were actually deciding on. Checking the reference process this workflow is modelled on confirmed the shape already chosen at the foundation stage: a single generic approving role (`management_approver`/`proposal.approve`), not a value-based hierarchy — the reference has no delegation-of-financial-power tiering either, so this was never a gap relative to it. What the reference does have that this slice was missing is content: a proposal there is a decision packet, not a bare gate.
+
+**Seeded on arrival, from whichever bidder was actually negotiated.** The moment a case reaches `purchase_proposal`, a trigger creates one `procurement_purchase_proposals` row, targeting whoever `procurement_negotiations` was actually run against if a negotiation record exists (win or lose the case still records who was negotiated with), falling back to the commercial desk's own award recommendation, then to the computed L1, for a case that skipped negotiation entirely (`dpc.to_proposal` directly). `original_evaluated_cost` is snapshotted from the comparative statement's own ranking; `negotiated_price` is left `NULL` unless a negotiation actually reached agreement, so a case with no negotiation shows one figure, not a blank second one.
+
+**One field, not two.** `recommendation_note` is the purchase officer's own written case for the vendor and price — the same lesson the comparative statement's recommendation form already learned about not asking for the same explanation in a "justification" box and a "remarks" box both. `procurement_save_proposal` is the only writer; the table carries no client write policy at all, the same reasoning as `procurement_cst_scrutiny` and the negotiation tables.
+
+**The gate.** `procurement_proposal_gaps` refuses `proposal.approve` until a recommendation is on file. Nothing else is checked — there is no second sign-off, no value threshold, and no split between "approve" and "raise the purchase order" the way the reference actually does it (see the limit below).
+
+### 4.10 The purchase order stage in detail
+
+One bare action (`po.issue`) existed from the foundation slice, checked by permission and remarks alone. Checking the reference process this workflow is modelled on surfaced three domain facts, and one genuine AI feature distinct from a fixed template:
+
+**Seeded on arrival, from the approved proposal.** The moment a case reaches `purchase_order`, a trigger creates one `procurement_purchase_orders` row — a fresh `PO-2026-0001`-style reference from `procurement_next_ref`, the recommended vendor and the order value carried in from `procurement_purchase_proposals`, and payment/delivery/warranty defaults copied across so nothing is typed twice. Line items are seeded once from the awarded bidder's own priced schedule (`procurement_quote_lines`) when they priced item by item; a bidder who was priced as a lump sum gets a single line carrying the proposal's own figure, because there is nothing item-wise on file to copy.
+
+**A genuine LLM-drafting feature, kept apart from the record it drafts for.** The reference has exactly this shape as a distinct feature from its own transactional PO fields: given the vendor, the amount and whatever terms are already on file, a model drafts the payment-terms paragraph, the delivery/execution-schedule paragraph, the warranty-and-inspection paragraph, and a special-conditions paragraph — grounded only in what is already recorded, never inventing a commercial term nobody agreed to. `po-ai-draft` (the edge function) writes to `procurement_po_ai_drafts`, its own table; nothing that gates `po.issue` reads it, and a draft only ever reaches the order's own fields when the purchase officer presses "Use this" on a specific clause — the same discipline this schema already holds the TEC committee's AI suggestion to.
+
+**The gate.** `procurement_po_gaps` refuses `po.issue` until a delivery date, a delivery address, payment terms, and at least one order line are on file.
+
+**Issuing, and what happens after.** `po.issue` is a signed action like any other hand-off; a trigger on `procurement_case_events` flips the order to `issued` and stamps who and when. Two things follow that have no equivalent anywhere earlier in this schema: the vendor's response is recorded on their behalf (`procurement_record_po_vendor_ack` — acknowledged, accepted or rejected, with a note), because there is no bidder-facing door for a vendor to record it themselves; and an issued order can be amended (`procurement_amend_po` — price, date or terms, with a mandatory reason), logged to `procurement_po_amendments` and bumping the order's `version`, the same corrigendum shape a floated tender notice already uses. Both are deliberately checked against the case's *visibility*, not against it still being "at" `purchase_order` — a vendor's acknowledgement or an amendment naturally happens after `po.issue` has already moved the case on to goods receipt.
+
+**The signed order, as a document rather than a screen.** Once issued, "Generate the signed order" (`lib/purchaseOrderPdf.ts`) renders the order — terms, line items, total — followed by **every signature on the case's own trail**, not only `po.issue`'s: finance clearing the budget, the technical and commercial committees, the comparative statement's sign-off, negotiation's agreement, the approving authority, and the issue itself, each with the signer's name, the procurement role they held at the moment they signed (`procurement_case_signatures_named`, resolving both server-side — RLS holds neither a name nor a role readable directly), and their actual mark. It goes through the same ingest path an uploaded scan takes, filed as a generated document on the case, so it is searchable and answerable by the case assistant like any other paper on the file. Rendered client-side with jsPDF, the same reasoning `noticeToPdf` already carries: no extra service, and the officer sees exactly what they are about to file before they file it. jsPDF's built-in font carries no ₹ glyph — both this and the tender notice render money as "Rs." rather than a silently substituted stray character.
+
+### 4.11 The goods receipt stage in detail
+
+Three bare actions existed from the foundation slice, checked by permission and remarks alone. Checking the reference process this workflow is modelled on surfaced a shape worth keeping — receiving in rounds, no full-quantity requirement to move on — and one thing worth skipping: a separate inspection/QA verdict the reference's own schema anticipates but its actual workflow never exercises (forwarding to payment there explicitly marks inspection "Skipped"). Building that here would have been the same unused shape twice.
+
+**Seeded on arrival, from the issued order's own lines.** The moment a case reaches `goods_receipt`, a trigger opens `procurement_goods_receipts` at cycle 1 and copies every line from `procurement_po_lines` — item, unit, rate, ordered quantity — into `procurement_grn_lines`. Nothing is retyped from the order.
+
+**Receiving happens in cycles, one open at a time.** A partial unique index allows only one `open` cycle per case, the same shape price negotiation's own rounds already use. Per line, per cycle: what was delivered, what was accepted, what was rejected. Accepted plus rejected can never exceed delivered (a table `CHECK`, not a form validation), and rejecting anything needs a stated `discrepancy_reason` — a line simply not yet delivered this cycle is not a discrepancy, only an actual rejection is.
+
+**Closing a cycle reopens the next one automatically, exactly the reference's own reopening rule.** `grn.close_cycle` (a new holding action) is guarded on every delivered line being fully classified and at least one line actually delivered. On success, a trigger closes the cycle and — if any line's cumulative accepted quantity still falls short of what was ordered — opens the next cycle, carrying `previously_accepted_qty` forward per line so nothing has to be re-summed from history. A cycle where every line reached its full ordered quantity does not reopen.
+
+**Forwarding to payment needs the cycle closed, not the order complete.** The reference's own rule: a short receipt can be forwarded exactly like a complete one. `procurement_grn_forward_gaps` (now wired onto the existing `grn.forward` action) asks only that the latest cycle not still be `open` — nothing about quantities. `procurement_grn_summary` is the rollup a reader (and a future payment slice) actually wants: grouped by line rather than by cycle, so "how much of this line has been accepted in total" never means summing history by hand.
+
+### 4.12 The payment recommendation stage in detail
+
+Four bare actions existed from the foundation slice. Checking the reference process this workflow is modelled on found this its thinnest module by its own evidence: no three-way match against the purchase order, no statutory deduction or bank-detail field anywhere, no enforced separation between whoever recommends and whoever clears despite role names that suggest one, and clearing payment closes the case as a direct side effect with no separate completion record. None of that reads as a gap to close — it is what the reference itself does — so none of it was built here either.
+
+**Seeded on arrival, against what goods receipt actually accepted.** The moment a case reaches `payment_recommendation`, a trigger sums `procurement_grn_summary`'s accepted value across every line and every cycle into `procurement_payment_recommendations.accepted_value`, and defaults `invoice_amount` to the same figure as a starting point the officer can correct — a real invoice can legitimately differ (freight, a rounding difference, a charge this schema does not model), so a mismatch is shown, never treated as an error.
+
+**One computed figure, the one thing the reference's own module gets right.** `recommended_amount` is a generated column: invoice amount less a penalty deduction, and a table `CHECK` refuses a deduction larger than the invoice itself — a bound the reference does not enforce.
+
+**The gate.** `procurement_payment_gaps` refuses `payment.clear` until an invoice number, an invoice date and a positive invoice amount are on file. `payment.clear` itself is unchanged: signed, and its own `target_stage` (`closed`) is what ends the case — the same direct closure the reference uses, just gated on an invoice actually being on record first.
+
+**"Generate the invoice" files the recommendation as a document, and can draft its own note.** The one piece of this stage that is prose rather than a figure — the recommendation note — can be drafted by the product's own model (`payment-ai-draft`), grounded only in the vendor, the accepted value, and the invoice figures already on file, and landing in its own table (`procurement_payment_ai_drafts`) nothing that gates `payment.clear` ever reads, the same discipline the purchase order's own AI drafting holds. Pressing "Generate the invoice" saves the recommendation and renders it — the invoice detail, the accepted value it is weighed against, the computed recommended amount, and the remarks (typed by hand, or accepted from the draft) — to a PDF filed on the case through the same ingest path an uploaded scan takes, so it is searchable and answerable by the case assistant like any other paper on the file.
+
+### 4.13 The activity timeline
 
 `procurement_case_activity(case)` merges four sources into one reverse-chronological trail — decisions from `procurement_case_events`, movements from `procurement_stage_history`, questions and send-backs from `procurement_clarifications`, and paperwork from `procurement_case_documents` — each with who did it, when, at which stage, and the remarks they left. The interleaving happens in the database rather than in the browser.
 
 The portal draws it as one component on the case file, and it is the same component at every stage: a tender's activity and a payment's activity are the same shape of fact. Gaps between entries are shown as elapsed time ("4 days later"), which is what makes a stalled case visible without reading timestamps.
 
-### 4.7 Asking about a case
+### 4.14 Asking about a case
 
 Every file attached to a case rides the product's ordinary ingest — stored, OCR'd where needed, chunked and embedded — so a case's paperwork is already searchable the moment it finishes processing. **Ask about this case** puts the existing assistant in front of it, scoped to that case.
 
@@ -464,7 +571,7 @@ Thirty-two tables. The reference tables are what make the workflow data-driven: 
 | `procurement_signatures` | One reusable signature per person. Private to its owner; no other policy reads it. |
 | `procurement_case_signatures` | One row per signed decision: case, action, stage, signer, its own copy of the image, and when. Read-only to every client — written solely by the engine. |
 | `procurement_user_roles` | Role grants, in their own table — the same anti-privilege-escalation shape as the app's `user_roles`. |
-| `procurement_committees`, `procurement_committee_members` | TEC, DPC and PNC rosters. Members carry `is_chair`, voting rights, attendance, findings, conflict-of-interest and a signature timestamp. TEC's own committee constitutes itself on arrival at that stage (§4.5); DPC and PNC still need the manual step in §10.4. |
+| `procurement_committees`, `procurement_committee_members` | TEC, DPC and PNC rosters. Members carry `is_chair`, voting rights, attendance, findings, conflict-of-interest and a signature timestamp. All three constitute themselves org-wide on arrival at their stage (§4.5). |
 
 **The requisition**
 
@@ -496,6 +603,60 @@ Thirty-two tables. The reference tables are what make the workflow data-driven: 
 | `procurement_tec_ai_suggestions` | One suggested reading per bidder — score, compliance call, qualified verdict, a summary and cited evidence, which model produced it, when. Also no client write policy; written only by `procurement_record_tec_ai_suggestion`, called from the `tec-ai-evaluate` edge function. Nothing that gates a decision reads this table. |
 
 The chair's own qualification call is not a fifth table — it is four columns on `procurement_bidders` (`tec_qualified`, `tec_note`, `tec_decided_by`, `tec_decided_at`), written only by `procurement_set_bidder_qualification`.
+
+**The commercial desk**
+
+| Table | Holds |
+|---|---|
+| `procurement_commercial` | One row per case: the ranking basis in force, and whether the quotes are still `draft` or `locked` behind a comparative statement. Seeded the moment a case reaches `commercial`. |
+| `procurement_commercial_quotes` | One row per bidder: base price, GST rate, freight, other charges, discount, a stated loading and its reason, and the compliance call — with `gst_amount`, `taxable_value` and `evaluated_cost` all generated columns. `base_price` is overridden by the priced schedule only once every published line carries a rate. |
+| `procurement_quote_lines` | One row per bidder per published bill line: the rate quoted, with `quantity` copied from the published line by a trigger and `line_amount` a generated column, so "the published quantity wins" and "the arithmetic wins over a stated amount" are both structural. No client write policy — every write goes through `procurement_record_quote_schedule`, which runs the matching rules the table itself cannot enforce. |
+| `procurement_commercial_approvals` | The head of division's sign-offs — bid opening, the statement, and the competent authority's clearance — one live row per kind per revision. No client write policy at all; written only by a trigger on `procurement_case_events` when the corresponding stage action fires. |
+
+**The comparative statement**
+
+| Table | Holds |
+|---|---|
+| `procurement_cst_versions` | One row per version of the statement for a case. A `draft` computes everything fresh; a `locked` or `superseded` version reads only its own frozen `snapshot`. At most one non-superseded version per case. No client write policy at all. |
+| `procurement_cst_scrutiny` | Five fixed questions per version — arithmetic, taxes and loadings, terms brought to par, the estimate comparison, deviations — shared by the desk, for the record rather than the gate. |
+| `procurement_commercial_recommendations` | The one live recommendation per case: outcome, recommended bidder, the computed L1 at the time, the justification for any departure from it, and whether a competent authority's clearance is required. Enforced partly by a table `CHECK`: a row that departs from L1 without a category and ten characters of text cannot exist. No client write policy — recording it and writing its history are one act. |
+| `procurement_commercial_recommendation_history` | Append-only: every change to the recommendation, who made it, and what it changed from and to. No client write policy. |
+
+**Price negotiation**
+
+| Table | Holds |
+|---|---|
+| `procurement_negotiations` | One row per case, seeded on arrival at `pnc` against the purchase committee's recommended bidder (or the computed L1): the mandate (reason, instructions, objectives), `status` (`open`, `agreed`, `failed`, `returned`), and — once concluded — the settled price and terms. No client write policy at all; every write goes through the RPCs in §4.8. |
+| `procurement_negotiation_rounds` | One row per round: the vendor's offer, the committee's counter, and, once closed, the settled figure and whatever terms moved alongside it. A partial unique index allows only one `open` round per case; `CHECK` constraints refuse a counter above the vendor's offer and a close above it without a stated `override_reason`. No client write policy at all. |
+
+**Purchase proposal**
+
+| Table | Holds |
+|---|---|
+| `procurement_purchase_proposals` | One row per case, seeded on arrival: the recommended bidder, the original evaluated cost and the negotiated price (`NULL` if negotiation never ran), the terms, and the purchase officer's own `recommendation_note`. No client write policy at all; every write goes through `procurement_save_proposal`. |
+
+**Purchase order**
+
+| Table | Holds |
+|---|---|
+| `procurement_purchase_orders` | One row per case, seeded on arrival: the PO number, the vendor and value carried from the proposal, delivery/payment/warranty terms, `status` (`draft`/`issued`), `version`, and the vendor's own response recorded on their behalf. No client write policy at all. |
+| `procurement_po_lines` | One row per order line, seeded once from the awarded bidder's own priced schedule, or a single lump line when they never priced item by item. No client write policy. |
+| `procurement_po_amendments` | Every change made to an issued order, with a reason and what moved from what to what — the same corrigendum shape a floated tender notice already uses. No client write policy. |
+| `procurement_po_ai_drafts` | The model's drafted clause text for one order — payment terms, delivery/execution schedule, warranty and inspection, special conditions — for the purchase officer to review. Regenerated in place; never blended into `procurement_purchase_orders` on its own. |
+
+**Goods receipt**
+
+| Table | Holds |
+|---|---|
+| `procurement_goods_receipts` | One row per delivery cycle, seeded on arrival: `cycle`, `status` (`open`/`closed`/`forwarded`). At most one `open` cycle per case. No client write policy at all. |
+| `procurement_grn_lines` | One published order line, one cycle: ordered/previously-accepted/delivered/accepted/rejected quantities, a discrepancy reason where one exists, and a generated `accepted_value`. No client write policy; every write goes through `procurement_save_grn_line`. |
+
+**Payment recommendation**
+
+| Table | Holds |
+|---|---|
+| `procurement_payment_recommendations` | One row per case, seeded on arrival: the accepted value goods receipt recorded, the invoice number/date/amount, a penalty deduction, a generated `recommended_amount`, voucher detail, and `status` (`pending`/`cleared`). No client write policy at all. |
+| `procurement_payment_ai_drafts` | The model's drafted recommendation note for one payment. Regenerated in place; never blended into `procurement_payment_recommendations` on its own. |
 
 Headroom is not stored. `procurement_budget_committed(head)` adds up the estimated value of every live case charged to that head — anything not rejected and past draft — plus the explicit ledger rows, and `procurement_budget_available(head)` subtracts that from the allocation. A draft has not asked for the money yet; a rejected case has given it back.
 
@@ -593,7 +754,8 @@ Everything goes through `procurement_record_decision(_case_id, _action_code, _re
 | `procurement_advance_stage(case, to, status, remarks)` | The only thing that writes `cases.stage`. Locks the row, checks visibility, checks the transition is legal, applies the destination's entry status, closes the case if the destination is `closed`, and writes the stage history. |
 | `procurement_transition_allowed(from, to)` | True for `→ closed`, for staying put, for any forward move, and for a declared return path. False otherwise. |
 | `procurement_reject_case(case, remarks)` | Terminal rejection. See §3.3. |
-| `procurement_available_actions(case)` | What the signed-in person may do on this case right now. Drives the action bar. |
+| `procurement_available_actions(case)` | What the signed-in person may do on this case right now. |
+| `procurement_available_actions_with_gaps(case)` | The same rows, each carrying its own `gaps_function`'s output (resolved dynamically the same way a guard is, skipped in silence if it does not resolve). What the action bar actually renders — a non-empty `gaps` disables the button and becomes its tooltip. |
 | `procurement_may_take_action(user, case, stage, action)` | Permission plus the chair rule. Shared by the action bar and the worklist so they cannot disagree. |
 | `procurement_my_worklist()` | Open cases the caller can see, sitting at a stage where at least one action is available to them, oldest first. |
 | `procurement_stage_counts()` | One row per stage: open cases and total value, under the caller's own visibility. Counted in the database rather than in the browser. |
@@ -617,10 +779,60 @@ Everything goes through `procurement_record_decision(_case_id, _action_code, _re
 | `procurement_submit_tec_evaluation(bidder, score, compliance, qualified, remarks, signature)` | A member's reading of one bid. Refuses without `tec.evaluate`/`tec.chair`, upserts on `(bidder, member)`. Unsigned — `signature` is accepted but never required; the reading does not move the case. |
 | `procurement_set_bidder_qualification(bidder, qualified, note)` | The chair's own final call, separate from any member's. Refuses without `tec.chair`. |
 | `procurement_tec_constitute_committee(case)` | Seeds a one-cycle TEC committee for the case from every org-wide `tec_chairman` (chair) / `tec_member` holder. Called by the same trigger that seeds the checklist, so a case never reaches `tec` without one. |
+| `procurement_dpc_constitute_committee(case)`, `procurement_pnc_constitute_committee(case)` | The same, for the purchase committee and price negotiation — one org-wide `dpc_chairman`/`dpc_member` or `pnc_chairman`/`pnc_member` committee, seeded by a trigger the moment a case arrives at that stage. |
 | `procurement_tec_case_consensus(case)` | Per bidder: how many members scored it, their average, how many called it qualified, and the percentage. Computed on read. |
 | `procurement_guard_tec_ready(case, payload)` | The gate in front of commercial evaluation, called as `tec.recommend`'s guard: at least one bidder marked qualified by the chair. |
 | `procurement_tec_gaps(case)` | The same rule as a list, for the readiness checklist. |
 | `procurement_record_tec_ai_suggestion(bidder, score, compliance, qualified, summary, evidence, model)` | Writes the AI-suggested reading for one bidder. Checks `tec.evaluate`/`tec.chair` the same as a human's own reading, but carries no signature — it is a suggestion, not a decision. Called only from `tec-ai-evaluate`. |
+| `procurement_commercial_seed(case)` | Idempotent. Creates the case's `procurement_commercial` row and one `procurement_commercial_quotes` row per received bidder, carrying across the bid amount and tax rate as a starting point. Fired by a trigger on arrival; never repairs a read. |
+| `procurement_save_quote(bidder, base, gst_pct, freight, other, discount, loading, loading_note, compliance, source, remarks)` | Upserts one bidder's commercial reading. A loading with no stated note is refused by a table `CHECK`, not by this function. |
+| `procurement_record_quote_schedule(quote, lines, source, stated_total)` | Reads a whole price schedule against the published bill in one transaction: matches by id, then name, then containment; derives a rate from a stated amount where needed; raises the seven issue codes; and only overrides the bidder's lump price once every published line is priced. |
+| `procurement_set_ranking_basis(case, basis)` | Changes which figure L1 is read off. An event, logged, not a silent preference. |
+| `procurement_commercial_ranking(case)` | The ranking, computed on read: every bidder's derived figures, eligibility, the weighted score if that is the basis, and the rank. |
+| `procurement_commercial_line_comparison(case)` | The cross-bidder, item-wise matrix — one row per published line per bidder, with that line's own cheapest rate flagged. |
+| `procurement_commercial_reasonableness(case)` | The one reasonableness check: the frozen published estimate, grossed up by its own tax rate, against the computed L1's evaluated cost. |
+| `procurement_guard_commercial_ready(case, payload)` | The gate in front of the comparative statement, called as `commercial.to_cst`'s guard. |
+| `procurement_commercial_gaps(case)` | The same rules as a list, for the commercial desk's checklist. |
+| `procurement_commercial_record_recommendation(case, outcome, bidder, reason, text, remarks)` | Records the desk's recommendation and appends a history row. Refuses a departure from the computed L1 without a category and real justification text — enforced again by a table `CHECK`, so the rule cannot be routed around. |
+| `procurement_approve_cst_authority(case, remarks)` | The competent authority's clearance for an award that departs from L1 or exceeds the estimate — its own approval kind, not folded into the routine sign-off. |
+| `procurement_cst_compile(case)` | Opens the next draft version and seeds its scrutiny checklist. Idempotent; fired on arrival at `cst`. |
+| `procurement_save_cst_scrutiny(case, item_key, status, remarks)` | One of the five fixed scrutiny questions, for the record. |
+| `procurement_cst_build_snapshot(case)` | Assembles everything a locked statement freezes — every bidder's figures, the matrix, the reasonableness position, the recommendation, both sign-offs, every name resolved at that moment. Called at lock and never again. |
+| `procurement_cst_lock(case)` | Freezes the live draft into a locked version. Runs from a trigger once the case has already reached `dpc`, so it cannot itself require the case to still be "at" `cst`. |
+| `procurement_commercial_reopen(case, reason)` | Supersedes the live statement version, opens the next as a fresh draft, unlocks the quotes, and retires every sign-off — each is keyed on the version it was given against, so a new version starts with none. |
+| `procurement_guard_cst_ready(case, payload)` | The gate in front of the purchase committee, called as `cst.to_dpc`'s guard. |
+| `procurement_cst_gaps(case)` | The same rules as a list, for the statement's checklist. |
+| `procurement_pnc_seed(case)` | Idempotent. Targets the purchase committee's recommended bidder (or the computed L1), snapshots the opening offer, and creates the case's `procurement_negotiations` row. Fired by a trigger on arrival at `pnc`; flips a `returned` negotiation back to `open` rather than seeding a second one. |
+| `procurement_save_negotiation_mandate(case, reason, instructions, objectives)` | Records why the committee is negotiating and what it is negotiating for. Required before a round can open. |
+| `procurement_open_negotiation_round(case, vendor_offer, counter, delivery_days, payment_terms, warranty_months, notes)` | Opens the next round. Refused before the mandate is on file, while another round is still open, or if the counter exceeds the vendor's own offer. |
+| `procurement_update_negotiation_round(round, …)` | Edits the currently open round as the discussion moves — the vendor's offer, the counter, and the terms alongside them. |
+| `procurement_close_negotiation_round(round, final_offer, override_reason, …)` | Settles the round. Refused above the vendor's own offer without a stated `override_reason`. |
+| `procurement_pnc_agreement_gaps(case)` | The gate in front of `pnc.agreed`: the mandate, at least one objective, no round left open, and a closed round carrying a settled figure. |
+| `procurement_guard_pnc_agreed(case, payload)` | `pnc.agreed`'s guard, wired onto the stage action row rather than seeded with one at the foundation. |
+| `procurement_proposal_seed(case)` | Idempotent. Targets whoever price negotiation actually ran against (or the commercial recommendation, or the computed L1), snapshots the evaluated cost and, if negotiation reached agreement, the negotiated price and terms. Fired by a trigger on arrival at `purchase_proposal`. |
+| `procurement_save_proposal(case, recommendation_note)` | Writes the purchase officer's own recommendation. Refuses off-desk or without `proposal.draft`. |
+| `procurement_proposal_gaps(case)` | The gate in front of `proposal.approve`: a recommendation on file. |
+| `procurement_guard_proposal_ready(case, payload)` | `proposal.approve`'s guard, wired onto the stage action row rather than seeded with one at the foundation. |
+| `procurement_po_seed(case)` | Idempotent. Creates the order from the approved proposal — vendor, value, terms — and copies the awarded bidder's priced schedule into `procurement_po_lines`, or a single lump line if they never priced item by item. Fired by a trigger on arrival at `purchase_order`. |
+| `procurement_save_po(case, delivery_date, delivery_address, billing_address, payment_terms, delivery_terms, special_conditions, warranty_months, penalty_clause)` | Edits the draft. Refuses once the order has been issued. |
+| `procurement_po_gaps(case)` | The gate in front of `po.issue`: a delivery date, a delivery address, payment terms, and at least one line. |
+| `procurement_guard_po_ready(case, payload)` | `po.issue`'s guard, wired onto the stage action row rather than seeded with one at the foundation. |
+| `procurement_record_po_vendor_ack(case, status, note)` | Records the vendor's response on their behalf. Checked against case visibility, not against the case still being "at" `purchase_order` — this is meant to be called after `po.issue` has already moved the case on. |
+| `procurement_amend_po(case, reason, delivery_date, delivery_terms, special_conditions, total_value)` | Amends an issued order: logs what changed and why to `procurement_po_amendments`, and bumps `version`. Refuses a draft (there is nothing to amend yet, only to correct) and refuses no stated reason. |
+| `procurement_record_po_ai_draft(case, payment_terms_draft, delivery_terms_draft, warranty_clause_draft, special_conditions_draft, model)` | Writes the model's drafted clause text. Checks `po.issue` the same as a human's own edit, but carries no signature — it is a suggestion, not a decision. Called only from `po-ai-draft`. |
+| `procurement_case_signatures_named(case)` | Every signature on a case with the signer's name (`profiles`) and the procurement role they held at the moment they signed (the matching `procurement_case_events` row) resolved server-side — neither is something RLS lets a client join for itself. Feeds the signed order PDF's own signature block. |
+| `procurement_grn_seed(case)` | Idempotent. Opens cycle 1 and copies every line from `procurement_po_lines` into `procurement_grn_lines`. Fired by a trigger on arrival at `goods_receipt`. |
+| `procurement_save_grn_line(line, delivered_qty, accepted_qty, rejected_qty, discrepancy_reason)` | Records one line for the current open cycle. Table `CHECK`s (not this function) refuse classifying more than was delivered, accepting more cumulatively than was ordered, or a rejection with no reason. |
+| `procurement_grn_summary(case)` | The rollup grouped by line rather than by cycle: total delivered/accepted/rejected and accepted value across every cycle, and whether the line is fully received. |
+| `procurement_grn_close_cycle_gaps(case)` | The gate in front of `grn.close_cycle`: at least one line delivered, and every delivered line fully classified as accepted or rejected. |
+| `procurement_guard_grn_close_ready(case, payload)` | `grn.close_cycle`'s guard. |
+| `procurement_grn_forward_gaps(case)` | The gate in front of `grn.forward`: the latest cycle not still open. No quantity rule. |
+| `procurement_guard_grn_forward_ready(case, payload)` | `grn.forward`'s guard, wired onto the stage action row rather than seeded with one at the foundation. |
+| `procurement_payment_seed(case)` | Idempotent. Sums `procurement_grn_summary`'s accepted value into `accepted_value`, and defaults `invoice_amount` to it. Fired by a trigger on arrival at `payment_recommendation`. |
+| `procurement_save_payment_recommendation(case, invoice_number, invoice_date, invoice_amount, penalty_deductions, voucher_number, voucher_date, remarks)` | Records the invoice. A table `CHECK`, not this function, refuses a deduction larger than the invoice itself. |
+| `procurement_payment_gaps(case)` | The gate in front of `payment.clear`: an invoice number, an invoice date, and a positive invoice amount. |
+| `procurement_guard_payment_ready(case, payload)` | `payment.clear`'s guard, wired onto the stage action row rather than seeded with one at the foundation. |
+| `procurement_record_payment_ai_draft(case, recommendation_note, model)` | Writes the model's drafted recommendation note. Checks `payment.process` the same as a human's own edit, but carries no signature — a suggestion, not a decision. Called only from `payment-ai-draft`. |
 | `procurement_build_notice(tender)` | Assembles the notice payload. Called at floating and at each corrigendum, and never again. |
 | `procurement_tender_summary(case)`, `procurement_tender_boq_total(tender)` | What the tender panel reads in one round trip. `lowest_bid` is the lowest amount recorded and never a ranking. |
 | `procurement_bid_submissions(case)` | Each firm, its bid status, and how many of its papers have been read. Not an evaluation and not a score. |
@@ -651,7 +863,12 @@ src/features/procurement/
   api/        cases.ts, lookups.ts, documents.ts, requisition.ts,
               insights.ts, boq-import.ts, assistant.ts, masterData.ts,
               signatures.ts, tender.ts, vendors.ts, tec.ts (also calls the
-              tec-ai-evaluate edge function)
+              tec-ai-evaluate edge function), commercial.ts, cst.ts,
+              negotiation.ts, proposal.ts, purchaseOrder.ts (also calls the
+              po-ai-draft edge function), goodsReceipt.ts, payment.ts (also
+              calls the payment-ai-draft edge function)
+              signatures.ts (also resolves signer name and role for the
+              signed order PDF)
   hooks/      useProcurement.ts — react-query keys and hooks
   lib/        portals.ts (roles → desks, queues, the ten-step chain)
               stages.ts (a one-line brief per stage)
@@ -663,13 +880,28 @@ src/features/procurement/
               tecChecks.ts (the tec guard's one rule, client-side)
               tender.ts (how the tender's coded columns read on screen)
               tenderNotice.ts (the notice snapshot, and rendering it to a PDF)
+              purchaseOrderPdf.ts (the order and its signatures, rendered to a PDF)
+              paymentRecommendationPdf.ts (the invoice and recommendation, rendered to a PDF)
               tec.ts (the checklist and evaluation labels, and the consensus tier)
+              commercial.ts (compliance, issue-code and reasonableness labels)
+              commercialChecks.ts (the commercial guard's rules, client-side)
+              cstChecks.ts (the cst guard's rules, client-side)
+              negotiationChecks.ts (the pnc agreement guard's rules, client-side)
+              proposalChecks.ts (the proposal guard's one rule, client-side)
+              poChecks.ts (the purchase order guard's rules, client-side)
+              grnChecks.ts (the close-cycle guard's rules, client-side)
+              paymentChecks.ts (the payment guard's rules, client-side)
   components/ PortalLayout, StageIndex, StageActionBar, StageBadge,
               CaseRegisterTable, ClarificationThread, CaseDocuments,
               CaseTimeline, RequisitionEditor, BoqEditor, BoqImport,
               CaseAssistant, ReadinessChecklist, DecisionSignature,
               CaseSignatures, FormSection, TenderNotice, BidderRoster,
-              CorrigendumList, VendorPanel, VendorPicker, TecEvaluationRow
+              CorrigendumList, VendorPanel, VendorPicker, TecEvaluationRow,
+              QuoteScheduleImport (unused as of this slice — no button opens
+              it, though procurement_record_quote_schedule behind it still
+              works), ComparativeMatrix, GeneratedDocuments (what a stage's
+              own "Generate…" button has filed, inline in the panel that
+              generated it, reusing CaseDocuments' own ingest-status display)
   components/charts/
               Charts.tsx  — CategoryBars, FlowChart, MeterRow
               palette.ts  — the validated chart colours, light and dark
@@ -686,6 +918,33 @@ src/features/procurement/
                                       their papers, an AI-suggested reading,
                                       the consensus, a member's own reading,
                                       and the chair's call
+              CommercialPanel.tsx   — the commercial desk: the reasonableness
+                                      position, the ranking, the item-wise
+                                      matrix, and one card per bidder for
+                                      pricing and the compliance call
+              CstPanel.tsx          — the comparative statement: the scrutiny
+                                      checklist, the recommendation, and the
+                                      version history a reopen leaves behind
+              PncPanel.tsx          — price negotiation: the mandate, the
+                                      round-by-round bargaining record, and
+                                      the readiness checklist in front of
+                                      "agreement reached"
+              ProposalPanel.tsx     — purchase proposal: the recommended
+                                      vendor, the original evaluated cost
+                                      against the negotiated price, and the
+                                      purchase officer's own recommendation
+              PurchaseOrderPanel.tsx — the purchase order: seeded line items,
+                                      delivery/payment/warranty terms, the
+                                      model-drafted clause text, issuing, the
+                                      vendor's recorded response, and
+                                      amendments to an issued order
+              GoodsReceiptPanel.tsx — goods receipt: the current open
+                                      delivery cycle's lines, the rollup
+                                      across every cycle, and earlier
+                                      deliveries' own history
+              PaymentPanel.tsx      — payment recommendation: the accepted
+                                      value, the invoice, and the computed
+                                      recommended amount
 
 src/pages/procurement/
   ProcurementSignIn, ProcurementHome, ProcurementRegister,
@@ -825,55 +1084,11 @@ docker exec -i jyoma-postgres psql -U postgres -d postgres -f - < scripts/check-
 
 Both should end with every assertion passing and a non-zero exit only on failure.
 
-### 10.4 Before the committee stages: constitute the committees
+### 10.4 The committees constitute themselves
 
-Chair-only actions (`tec.recommend`, `dpc.to_pnc`, `dpc.to_proposal`, `pnc.agreed`, and their siblings) require the caller to be the **chairperson of a committee constituted on that specific case**. The seed does not constitute committees, because committees belong to a case, not to the system, and the screens that constitute them by hand arrive with a later slice.
+Chair-only actions (`tec.recommend`, `dpc.to_pnc`, `dpc.to_proposal`, `pnc.agreed`, and their siblings) require the caller to be the **chairperson of a committee constituted on that specific case**. All three committee stages now seed one the moment a case arrives — a trigger on `procurement_cases` fires for `tec`, `dpc` and `pnc` alike, seating every org-wide holder of that stage's chair role (as chair) and member role — see §4.5. There is nothing to run by hand: `tec.chair@jyoma.ai`, `dpc.chair@jyoma.ai` and `pnc.chair@jyoma.ai` each already see their stage's chair-only actions the moment a case reaches that desk, and each appears in their own worklist.
 
-**TEC is the exception.** A trigger constitutes its committee the moment a case reaches the `tec` stage, seating every org-wide `tec_chairman`/`tec_member` — see §4.5. Nothing below is needed for TEC; `tec.chair@jyoma.ai` already sees `tec.recommend` on a case that has reached that desk.
-
-For DPC and PNC, you have two ways to test the committee stages:
-
-**Either** drive them as `admin@jyoma.ai`, who holds `proc_admin` and bypasses the chair check.
-
-**Or** constitute the two remaining committees on your test case first. Run this once, with your case number substituted:
-
-```sql
--- psql -h localhost -p 54322 -U postgres -d postgres
-DO $$
-DECLARE
-  _case UUID;
-  _kind procurement_committee_kind;
-  _committee UUID;
-  _chair UUID;
-  _member UUID;
-BEGIN
-  SELECT id INTO _case FROM public.procurement_cases WHERE case_no = 'PC-2026-0001';
-
-  FOREACH _kind IN ARRAY ARRAY['dpc','pnc']::procurement_committee_kind[] LOOP
-    INSERT INTO public.procurement_committees (case_id, kind, name)
-    VALUES (_case, _kind, upper(_kind::text) || ' for ' || 'PC-2026-0001')
-    ON CONFLICT (case_id, kind, cycle) DO NOTHING;
-
-    SELECT id INTO _committee FROM public.procurement_committees
-     WHERE case_id = _case AND kind = _kind AND cycle = 1;
-
-    SELECT id INTO _chair  FROM auth.users WHERE email = _kind::text || '.chair@jyoma.ai';
-    SELECT id INTO _member FROM auth.users WHERE email = _kind::text || '.member@jyoma.ai';
-
-    INSERT INTO public.procurement_committee_members (committee_id, user_id, is_chair, designation)
-    VALUES (_committee, _chair, true, 'Chairperson')
-    ON CONFLICT (committee_id, user_id) DO UPDATE SET is_chair = true;
-
-    IF _member IS NOT NULL THEN
-      INSERT INTO public.procurement_committee_members (committee_id, user_id, is_chair, designation)
-      VALUES (_committee, _member, false, 'Member')
-      ON CONFLICT (committee_id, user_id) DO NOTHING;
-    END IF;
-  END LOOP;
-END $$;
-```
-
-The `tec.chair@` / `dpc.chair@` / `pnc.chair@` email pattern is what makes the loop work. Once the rows exist, the chair's action bar shows the chair-only buttons and the case appears in their worklist.
+This is org-wide, not case-scoped — every TEC chair in the organisation sits on every case's TEC committee, and the same for DPC and PNC. A committee scoped to the case's own department or category is still database work, the same stated limit as everywhere else case-specific role assignment carries in this product (§11).
 
 ### 10.5 The walkthrough
 
@@ -1055,7 +1270,7 @@ These are as much a part of the test as the happy path. Each should be refused b
 | `payments@` opening a case still at tender | Not visible at all; the register does not list it |
 | `head@` calling `procurement_record_decision` | `You do not hold <permission>` |
 | `tec.member@` calling `tec.recommend` | `You do not hold tec.chair` |
-| `dpc.chair@` calling `dpc.to_pnc` with no DPC committee constituted on the case | `Only the chairperson can take this decision` — TEC's own committee constitutes itself (§4.5) and no longer demonstrates this; DPC and PNC still do |
+| `dpc.chair@` calling `dpc.to_pnc` before the case has actually reached `dpc` | `dpc.to_pnc is not available while the case is at %` — a committee exists org-wide the moment any case reaches the stage, so this now fails on the stage check rather than the chair check |
 | `tec.chair@` calling `tec.recommend` before any bidder is qualified | `"Recommend for commercial evaluation" still needs: At least one bidder marked qualified by the chair` |
 | `tec.member@` calling `procurement_set_bidder_qualification` | `You do not hold tec.chair` |
 | `requester@` calling `procurement_submit_tec_evaluation` | `You do not hold tec.evaluate` |
@@ -1147,7 +1362,54 @@ The call is a model reading a long prompt and can take the better part of a minu
 
 **Sending a case on from TEC.** Sign in as `tec.chair@jyoma.ai` on a case at `tec` and qualify at least one bidder. Expect `tec.recommend` to already be sitting in the action bar at the bottom of the page — no manual committee setup needed, per §4.5. Press it, write remarks, and expect to be asked to sign, the same as any other signed decision; confirm the case lands at `commercial` afterwards. Confirm `tec.member@jyoma.ai` never sees `tec.recommend`, `tec.query`, `tec.return` or `tec.refuse` at all — those stay chair-only regardless of committee membership.
 
-### 10.10 Master data
+### 10.10 Price negotiation
+
+Get a case to `pnc` (`dpc.to_pnc` as `dpc.chair@jyoma.ai`, or the migration's own backfill on a case already there), then sign in as `pnc.chair@jyoma.ai` or `pnc.member@jyoma.ai` — both see the desk, only the chair sees `pnc.agreed`, `pnc.return` and `pnc.failed`.
+
+- Expect the vendor and the opening offer already filled in — the recommended bidder from the comparative statement, or the computed L1, at its evaluated cost. No setup screen, the same as TEC's committee.
+- Try **Open a round** before saving a mandate. Expect it disabled, and the readiness checklist naming the mandate and the objective as outstanding.
+- Save a mandate with a reason and at least one objective, then open a round with the vendor's offer and a counter above it. Expect the save refused — a counter cannot exceed the vendor's own current offer — with the reason stated plainly.
+- Open a round with a counter at or below the vendor's offer. Try opening a second round while the first is still open; expect it refused until the first closes.
+- Close the round with a settled figure above the vendor's own offer and no reason. Expect it refused. Add a reason and it should go through.
+- With a round closed on a lower figure, expect the readiness checklist to go green and `pnc.agreed` to appear on the action bar. Press it, sign, and confirm the case reaches `purchase_proposal`, `procurement_negotiations.status` reads `agreed`, and the locked comparative statement's own snapshot has not changed — the negotiated figure sits beside it, not in place of it.
+
+### 10.11 The purchase order
+
+Get a case to `purchase_order` (`proposal.approve` as `approver@jyoma.ai` with a recommendation on file, or the migration's own backfill on a case already there), then sign in as `po@jyoma.ai`.
+
+- Expect the vendor, the order value and at least one line already filled in — copied from the approved proposal and its priced schedule, no setup screen.
+- Expect `po.issue` absent from the action bar, and the readiness checklist naming the delivery date, address and payment terms as outstanding.
+- Press **Draft the clauses**. Expect it to take up to a minute against a remote endpoint, then four paragraphs to appear — payment terms, delivery terms, a warranty clause, and special conditions — each grounded in whatever is already on the order. Press **Use this** on one and confirm the field below it fills in; confirm nothing is written to the order itself until **Save the order** is pressed.
+- Fill in a delivery date, a delivery address and payment terms (by hand, or from the draft), save, and confirm `po.issue` appears and the checklist goes green.
+- Press `po.issue`, sign, and confirm the case reaches `goods_receipt` and the order reads `issued` with who and when.
+- Record the vendor's response (acknowledged / accepted / rejected) and confirm it shows on the order. Confirm this is purely informational — nothing about the case's progress depends on it.
+- Amend the order with a new delivery date and a reason. Confirm the version increments and the amendment appears in the order's own history. Try amending with no reason typed; expect it refused.
+- Once issued, press **Generate the signed order**. Confirm it downloads as a filed, generated document on the case (visible in Paperwork, and to the case assistant once indexed) with the order's own terms and lines, followed by every signature on the case's whole trail — not only `po.issue`'s — each with the signer's name, the role they held, and their actual mark.
+
+### 10.12 Goods receipt
+
+Get a case to `goods_receipt` (`po.issue` as `po@jyoma.ai`, or the migration's own backfill on a case already there), then sign in as `payments@jyoma.ai`.
+
+- Expect a delivery already open, with one line per order line — item, unit, rate, ordered quantity — no setup screen.
+- Try **Close this delivery** with nothing recorded. Expect it refused, naming "at least one line actually delivered."
+- Record a delivery on one line: deliver 5, accept 4, reject 1, with no reason. Expect the save refused. Add a reason and it should go through.
+- Try recording accepted 4 and rejected 2 against a delivery of 5. Expect it refused — accepted plus rejected cannot exceed delivered.
+- Leave the order's other line(s) short of their own ordered quantity and press **Close this delivery**. Expect it to succeed, and a second delivery cycle to open automatically, carrying forward what has already been accepted per line.
+- Try `grn.forward` while the second cycle is still open. Expect it refused — a delivery still being recorded blocks forwarding, regardless of quantity.
+- Bring every line to its full ordered quantity across cycles, close the final cycle (expect no third cycle to open), then press `grn.forward`. Confirm the case reaches `payment_recommendation` without ever having been asked for a full single delivery.
+
+### 10.13 Payment recommendation
+
+Get a case to `payment_recommendation` (`grn.forward` as `payments@jyoma.ai`, or the migration's own backfill on a case already there). Same account owns this desk too.
+
+- Expect the accepted value already filled in from goods receipt, and the invoice amount defaulted to the same figure — no setup screen.
+- Expect `payment.clear` absent from the action bar, and the readiness checklist naming the invoice number, date and amount as outstanding.
+- Try recording a penalty deduction larger than the invoice amount. Expect it refused.
+- Record a real invoice number, date and amount. Press **Draft the recommendation**; expect it to take up to a minute against a remote endpoint, then a short note to appear grounded in the figures already on the record. Press **Use this** and confirm it fills the remarks field; confirm nothing is written until you generate.
+- Press **Generate the invoice**. Confirm it saves the recommendation, recomputes the recommended amount as invoice less deduction, and files a document on the case (visible in Paperwork, and to the case assistant once indexed) with the invoice detail and the remarks. Confirm the checklist goes green.
+- Press `payment.clear`, sign, and confirm the case reaches `closed` (case status `closed` too) and the recommendation reads `cleared` with who and when.
+
+### 10.14 Master data
 
 Sign in as `admin@jyoma.ai` and open **Master data** in the header (`/procurement/admin`).
 
@@ -1163,26 +1425,52 @@ Sign in as `admin@jyoma.ai` and open **Master data** in the header (`/procuremen
 
 - **Signatures are captured, not certified.** Fourteen actions are signed and the engine refuses them unsigned, but a drawn mark is not a cryptographic signature: there is no key, no certificate and no tamper seal on the surrounding record. It proves who was at the keyboard as well as a paper signature proves who held the pen, and no better.
 - **Nothing is backfilled.** Decisions taken before signing was enforced carry no signature row.
-- **Only the requisition, the tender and technical evaluation have stage guards.** `mpr.submit`, `tender.to_tec`, `tender.to_commercial` and `tec.recommend` are guarded; every later action is checked by permission and remarks alone, so the preconditions for, say, a commercial decision are not enforced yet. A guard whose `(uuid, jsonb)` signature does not resolve is skipped silently, so adding one is worth an explicit `to_regprocedure` check.
+- **A holding action's button never disappears once it has already been pressed.** `commercial.opening_approve`, `cst.generate`, `cst.po_approve`, `cst.finance_approve` and `cst.signoff` are all idempotent when pressed again after they have already succeeded — nothing is undone or duplicated — but nothing removes the button from the bar once its own job is done. This is a narrower gap than it used to be: see the next point.
+- **The action bar now greys out a not-yet-ready action instead of letting it fail silently on press.** Reported directly: pressing "Forward for payment" while a delivery cycle was still open did nothing but return the database's refusal, indistinguishable from a broken button. `procurement_available_actions_with_gaps` resolves every visible action's own `gaps_function` the same way `procurement_record_decision` resolves a guard — dynamically, via `to_regprocedure`, skipped in silence if the name does not resolve — and the action bar disables a button whose gaps are non-empty, with the gaps themselves in the tooltip. This covers every guarded action generically (`proposal.approve`, `po.issue`, `pnc.agreed`, `grn.close_cycle`, `grn.forward`, `payment.clear`, and any future one), not goods receipt specifically. What it does not cover: an action with no `gaps_function` at all (the purchase committee's own actions, `payment.hold`/`return`/`refuse`) still shows as pressable with no readiness signal, because there is no gate to read — that is a real absence of a guard, not a UI gap.
+- **Every stage from the requisition through payment recommendation now has a stage guard except the purchase committee itself.** `mpr.submit`, `tender.to_tec`, `tender.to_commercial`, `tec.recommend`, `commercial.to_cst`, `cst.to_dpc`, `pnc.agreed`, `proposal.approve`, `po.issue`, `grn.close_cycle`, `grn.forward` and `payment.clear` are guarded; `dpc.to_pnc` and `dpc.to_proposal` are checked by permission and remarks alone. A guard whose `(uuid, jsonb)` signature does not resolve is skipped silently, so every migration that adds one now ends with an explicit `to_regprocedure` assertion — the commercial, cst, negotiation, proposal, purchase order, goods receipt and payment migrations are the first to actually check this instead of only warning about it.
 - **Documents are optional by design.** Nothing requires paperwork on a requisition — a service or a lump-sum job may have none. If your organisation wants a hard rule, it belongs in `procurement_guard_requisition_ready`, not in the portal.
 - **A read bill is a draft, not a fact.** `extract-boq` is a model reading a file; it is shown for review and never written on its own, but a requester who accepts it without looking will put the model's arithmetic on the case. Rates and quantities deserve a glance.
 - **The case assistant answers from what has been indexed.** A file attached a moment ago is not yet answerable, which the panel says; and a document the pipeline failed to read is silently absent from answers rather than flagged in them.
-- **Stages after technical evaluation are summaries.** Each shows the case, the requisition it came from, and its decisions; the stage's own working data — quotations, orders — arrives with later slices.
+- **The purchase committee is the one stage left as a summary.** It shows the case, the requisition it came from, and its decisions; the committee's own resolution is a remark on `dpc.to_pnc` or `dpc.to_proposal`, not a record of its own.
+- **Payment recommendation has no three-way match, no statutory deduction, and no bank/beneficiary detail — matching the reference's own module, not a gap relative to it.** The recommended amount is invoice less a flat penalty deduction; nothing checks it against the purchase order's own value or the accepted value beyond showing both side by side. There is no due date, no partial-payment concept distinct from a hold, and no security-deposit or bank-guarantee release tied to closing — none of these exist in the reference's own payment module either.
+- **Clearing payment closes the case directly, with no separate completion record.** The reference does the same — approval sets a status and transitions the case, nothing more. A voucher number and date can be recorded, but nothing here generates one automatically or moves any money; actual payment happens entirely outside this system.
+- **Goods receipt has no inspection/QA step of its own, matching the reference's own actual behaviour rather than its unused schema.** Whoever holds `grn.create` records delivered, accepted and rejected quantities directly; there is no second, separate verdict from an inspector.
+- **A discrepancy is a recorded fact, not a procedural trigger.** Rejecting a quantity needs a reason, but nothing here generates a debit note, a short-supply notice to the vendor, or any other downstream action from it — the same as the reference's own module.
+- **Goods receipt cycles are keyed on published line number, not on a stable per-line identity.** If a purchase order's own lines were ever edited after receiving began (they currently cannot be, since `procurement_purchase_orders` refuses edits once issued), a reopened cycle's carried-forward figures would be keyed on `line_no` matching, the same limit `procurement_quote_lines` already documents for a corrigendum.
+- **The purchase proposal does not split "approve" from "raise the purchase order."** The reference stages a draft purchase order on approval and has a separate PO officer issue it; here `proposal.approve` moves straight to `purchase_order` in one press, and the order itself is seeded fresh on arrival rather than inheriting a draft the proposal step already created.
+- **A purchase proposal seeded before negotiation ran keeps reading that way even if a later return sends the case back through negotiation.** The seed is idempotent and never repaired on a later read, the same convention as every other seed-on-entry trigger — see `purchase_proposal → pnc` in the return-paths-with-no-button list below.
+- **The purchase order's and the payment recommendation's AI-drafted text are grounded only in figures already on file, and can be wrong the same way any model output can be.** `po-ai-draft` and `payment-ai-draft` are both told not to invent a payment percentage, a discount, or a penalty rate that was not given to them, but each is still a model reading a short prompt, not a lookup — pressing "Use this" without reading it puts the model's wording, not just its arithmetic, into the record.
+- **"Generate the invoice" produces an internal recommendation document, not the vendor's own invoice.** The button reflects what the officer typed against the invoice already in hand (its number, date, amount) plus the computed recommended figure — it does not, and could not, fabricate the vendor's actual commercial instrument.
+- **An issued order's amendment only covers price, delivery date, delivery terms and special conditions.** `procurement_amend_po` does not cover a change of vendor, a change to the line items themselves, or a change to payment terms or warranty — those would need a fresh order, the same as a tender corrigendum cannot change who is bidding.
+- **The vendor's acknowledgement is informational, not a gate.** Recording "rejected" does not block, return, or otherwise affect the case — there is no logic anywhere that reads `vendor_ack_status` except the panel that displays it.
+- **`po_officer` held no document-upload permission at all until this slice.** Every other stage-owning role that files paperwork of its own (the requester, the tender/tec trio, receipt and payment) already held `upload_docs`/`docs.upload`; the purchase order desk was the one left out, discovered when the signed order PDF's own "file this on the case" step failed outright. Fixed by `20260911210000_procurement_po_officer_upload.sql` — worth remembering if a future role is added and only granted the permission its own primary action needs.
 - **There is no bidder-facing door, and no sealed-bid guarantee.** The tender is floated elsewhere and the purchase officer records what came back. Nothing stops a bid being entered, edited or removed before bidding closes, and the portal should not be described as if it received bids itself.
 - **The notice is generated but not floated.** Filing it on the case is where this slice stops: nothing publishes it to a portal, emails it, or tells a bidder anything. `procurement_corrigendum_notices` records that somebody was told, by whatever means; it does not do the telling.
 - **The technical evaluation stops at score, compliance and a verdict — there is no line-by-line spec matrix.** A member's reading of a bid is one score, one compliance call and one qualified flag for the whole submission; nothing compares each published bill line against what a bidder actually quoted, the way the comparative statement will for price. Building that matrix from `procurement_tender_items` is future work, not a gap in what shipped — the checklist and the per-member reading are what this slice promises, and both are real.
 - **The AI suggestion is one call per bidder, on request — never a whole roster, and never on its own.** A member presses "Ask the assistant" and the same retrieval "Ask about this bid" does turns into a proposed score instead of an answer to a typed question. It refuses rather than guesses when a bidder's papers are not indexed yet, and it never runs by itself when a case reaches this desk — a model call has a real cost, and papers may still be mid-ingest.
 - **A qualification can be reversed at any time before the case leaves the desk, including after `tec.recommend` has fired once and been undone by a return.** There is no `evaluationLocked`-style freeze once the recommend action succeeds; the guard is checked at the moment of the decision, not enforced as a standing constraint on the bidder row afterward.
 - **Nothing checks that a firm actually sent anything.** A bid with no papers at all passes the tender gate; the guard counts bids and amounts, not attachments. That is deliberate for now — a limited tender for a known supplier may legitimately carry none — but it means "no certificate on file" and "no requirement for one" look the same.
-- **Bids carry one amount, not priced lines.** A bidder quotes a single figure against the whole bill, so nothing can yet compare two bids line by line, and nothing ranks them. `procurement_tender_summary` reports a lowest recorded amount, which is not a ranking and must not be shown as one — that needs the technical evaluation and the comparative statement.
+- **Bids are still recorded at the tender desk as one amount.** The commercial desk now supports pricing item by item against the published bill, and a bidder's `procurement_bidders.bid_amount` is only ever the tender officer's own starting figure — but nothing forces a schedule; a lump sum priced by hand at the commercial desk is a legitimate, fully supported path, and `procurement_tender_summary.lowest_bid` at the tender desk itself is still not a ranking and must not be shown as one.
 - **Pre-bid queries are not modelled separately.** The clarification thread is internal; a question from a bidder has nowhere of its own to live, and the pre-bid meeting is a date and a venue rather than a record with minutes.
 - **A corrigendum that moves the money only raises a flag.** `needs_finance_review` is set and shown; nothing routes the case back to finance or blocks the handoff on it.
 - **Budget commitments are derived, not posted.** Headroom is computed from live case values rather than written as ledger entries at each approval, so there is no record of when a commitment was made, only what it is now.
 - **Some declared return paths have no button.** `mpr → draft`, `cst → tec`, `cst → tender`, `purchase_proposal → dpc`, `purchase_proposal → pnc` are legal in the data but not offered anywhere yet.
-- **The TEC committee is org-wide, not case-scoped.** It auto-constitutes with every holder of `tec_chairman`/`tec_member`, not the people actually assigned to that case's department or category (§4.5) — the same shape of limit case-specific role assignment already carries everywhere else, but worth knowing before assuming a chair on one case is meant to see every other. DPC and PNC are not auto-constituted at all yet; §10.4 still has the manual step.
+- **Every auto-constituted committee is org-wide, not case-scoped.** TEC, DPC and PNC each seat every holder of that stage's chair and member roles, not the people actually assigned to that case's department or category (§4.5) — the same shape of limit case-specific role assignment already carries everywhere else, but worth knowing before assuming a chair on one case is meant to see every other.
 - **The receipt and payment officer's desk is registered as goods receipt only.** They hold `payment.process` and can act at the payment stage, but visibility is derived from goods receipt onward — which is the same thing in practice, since payment comes after.
 - **No SLA enforcement.** Timers and escalation roles are stored and displayed; nothing escalates.
 - **The admin screen stops at master data.** Lookups, budget heads and vendors are editable at `/procurement/admin`; role assignment and committee rosters are still database work, and the stage configuration is deliberately left as a migration.
 - **Deleting a lookup entry blanks the field on the cases that used it.** Every foreign key into `procurement_lookups` is `ON DELETE SET NULL`. The confirmation counts what will be affected and pushes you towards retiring instead, but it does not refuse.
 - **The requisition's, the tender's and technical evaluation's rules are each written twice.** `procurement_guard_requisition_ready`, `procurement_guard_tender_ready` and `procurement_guard_tec_ready` decide; `lib/requisitionChecks.ts`, `lib/tenderChecks.ts` and `lib/tecChecks.ts` paint. Change one without the other and the form goes green on a case the engine will still refuse — the checklist notices the disagreement and says so, but the duplication is real and there is no test holding the two together.
+- **The commercial and cst guards join the same duplication.** `procurement_guard_commercial_ready` and `procurement_guard_cst_ready` decide; `lib/commercialChecks.ts` and `lib/cstChecks.ts` paint. Same shape, same risk, same mitigation — the `ReadinessChecklist` says so when the two disagree.
+- **No currency conversion, no price escalation, no net-present-value of payment terms, and no last-purchase-price or market-rate benchmark.** The evaluated cost is base price, tax, freight, other charges, a discount and one stated loading; the only reasonableness check is against the estimate the bidders themselves quoted against. An organisation that needs any of the above has to add it as a further named loading with its own stated reason, or as a further slice.
+- **Negotiation has no reasonableness re-check of its own.** `procurement_commercial_reasonableness` runs once, at the commercial desk, against the estimate; nothing re-compares a negotiated `final_price` to that same estimate, or to anything else, before `pnc.agreed` accepts it. A committee could settle above the estimate the desk itself flagged as unreasonable and nothing here would say so.
+- **Negotiation has no numeric mandate ceiling.** The committee's counter cannot exceed the vendor's own current offer, and settling above it needs a stated reason — but there is no "the committee may not go above ₹X without further approval" style threshold, the way `procurement_commercial_recommendations` gates an award over the estimate on a competent authority's clearance. A stated reason is not the same as a check.
+- **A negotiated agreement is not yet read anywhere downstream.** `procurement_negotiations.final_price` and its terms are written and visible on the case, but the purchase proposal stage has no working form of its own yet (see above) to actually read them into an order.
+- **The commercial desk's file-based schedule reader lost its button.** `procurement_record_quote_schedule` still reads a whole priced sheet against the published bill in one transaction, and `QuoteScheduleImport.tsx` still calls it — but nothing in `CommercialPanel` renders it any more, so an item-wise schedule can currently only be entered by typing each line's rate by hand, or written directly through the RPC.
+- **The estimate a bid is measured against assumes one tax basis.** `procurement_commercial_reasonableness` reads the tender's own `estimated_value` and `gst_pct`; a requisition with no tender-stage estimate falls back to the bare case value with no tax applied at all, and says so as `no_estimate` or `estimate_source: 'requisition'` rather than guessing a rate.
+- **The weighted-score ranking basis needs delivery and warranty on every eligible bid.** `procurement_commercial_ranking` computes it from `procurement_bidders.delivery_days` and `warranty_months`; a bid missing either is still ranked on evaluated cost or base price, but switching the whole case to the weighted basis with a gap in either field would silently zero that bidder's missing component rather than exclude them — worth a stated rule if this basis sees real use.
+- **A departure from L1 is justified with free text against a fixed category, not verified against anything.** The database enforces that a category was picked and that the text clears ten characters; it does not and cannot judge whether the justification is actually true. That is, and stays, a human decision.
+- **There is no split award.** `procurement_commercial_line_comparison` computes an item-wise L1 so a reader can see that the cheapest firm overall is not always the cheapest firm on every line, but recommending different firms for different lines is not offered anywhere — one recommendation, one bidder, per case.
+- **A reopened comparative statement does not reach back into the purchase committee.** If DPC has already acted on a locked v1 and the desk reopens it as v2 with a materially different recommendation, nothing here archives or resets a DPC resolution the way the reference this process was studied from does — there is no DPC resolution table yet for it to reach into. `procurement_commercial_reopen` says as much in its own comment rather than pretending to handle a case it cannot.
+- **`extract-quote-schedule`, the price-reasonableness review, and the drafted scrutiny note are not built.** The commercial and cst slices ship the schema, the guards, and a manual paste-based schedule reader (`QuoteScheduleImport`, mirroring `BoqImport`'s review-before-write shape but without a model behind it); the three AI features `procurement_commercial_ai_price_extractions`, `procurement_commercial_ai_price_reviews` and `procurement_cst_ai_note` were designed for are documented in the implementation plan but not yet migrated, and there is no edge function for any of them yet. The case assistant's existing `caseId`/`bidderId` scoping already works unchanged at both desks.
 - **Six desks can read every document on a case but cannot add one.** Finance, commercial, both committees, the approving authority and the PO officer hold no `upload_docs`. Reading, opening and asking the assistant all work; attaching does not. Change it with a `procurement_role_permissions` row if a committee needs to file its own minutes.

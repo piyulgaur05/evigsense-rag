@@ -14,9 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useAvailableActions, useStageDecision } from "../hooks/useProcurement";
+import { useAvailableActionsWithGaps, useStageDecision } from "../hooks/useProcurement";
 import { DecisionSignature, type AppliedSignature } from "./DecisionSignature";
-import type { StageAction } from "../types";
+import type { StageAction, StageActionWithGaps } from "../types";
 
 /**
  * What the case can do next. The buttons come from the database — the same
@@ -24,7 +24,7 @@ import type { StageAction } from "../types";
  * would then refuse.
  */
 export function StageActionBar({ caseId, caseNo }: { caseId: string; caseNo: string }) {
-  const { data: actions, isLoading } = useAvailableActions(caseId);
+  const { data: actions, isLoading } = useAvailableActionsWithGaps(caseId);
   const decide = useStageDecision();
   const [remarks, setRemarks] = useState("");
   const [pending, setPending] = useState<StageAction | null>(null);
@@ -100,39 +100,41 @@ export function StageActionBar({ caseId, caseNo }: { caseId: string; caseNo: str
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
           your decision
         </p>
-
-        <div className="mt-3">
-          <Label htmlFor="stage-remarks" className="text-[13px]">
-            Remarks
-          </Label>
-          <Textarea
-            id="stage-remarks"
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            rows={3}
-            placeholder="What you decided and why. This goes on the record."
-            className="mt-1.5 text-[13px]"
-          />
-        </div>
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Pick what you're doing — you'll be asked for remarks before it's recorded.
+        </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {actions.map((action) => (
-            <Button
-              key={action.code}
-              size="sm"
-              variant={destructive(action) ? "destructive" : action.sort_order <= 10 ? "default" : "outline"}
-              onClick={() => setPending(action)}
-              title={action.description ?? undefined}
-            >
-              {action.label}
-              {/* Said before the press, not after: a decision that will ask for
-                  a signature should not surprise anybody mid-flow. */}
-              {action.requires_signature && (
-                <PenLine className="ml-1.5 h-3.5 w-3.5 opacity-70" aria-label="needs your signature" />
-              )}
-            </Button>
-          ))}
+          {actions.map((action) => {
+            const notReady = action.gaps.length > 0;
+            return (
+              <Button
+                key={action.code}
+                size="sm"
+                variant={destructive(action) ? "destructive" : action.sort_order <= 10 ? "default" : "outline"}
+                onClick={() => setPending(action)}
+                disabled={notReady}
+                title={
+                  notReady
+                    ? `Still needs: ${action.gaps.join(", ")}`
+                    : action.description ?? undefined
+                }
+              >
+                {action.label}
+                {/* Said before the press, not after: a decision that will ask for
+                    a signature should not surprise anybody mid-flow. */}
+                {action.requires_signature && (
+                  <PenLine className="ml-1.5 h-3.5 w-3.5 opacity-70" aria-label="needs your signature" />
+                )}
+              </Button>
+            );
+          })}
         </div>
+        {actions.some((a) => a.gaps.length > 0) && (
+          <p className="mt-2 text-[12px] text-muted-foreground">
+            Greyed out — hover a disabled button to see what it's still waiting on.
+          </p>
+        )}
       </div>
 
       <AlertDialog open={Boolean(pending)} onOpenChange={(open) => !open && setPending(null)}>
@@ -142,9 +144,29 @@ export function StageActionBar({ caseId, caseNo }: { caseId: string; caseNo: str
             <AlertDialogDescription>
               {pending?.description} This is recorded against {caseNo} under your name.
               {pending?.requires_signature ? " You will be asked to sign it." : ""}
-              {remarksMissing ? " Remarks are required before you can go ahead." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div>
+            <Label htmlFor="stage-remarks" className="text-[13px]">
+              Remarks{pending?.requires_remarks ? " (required)" : " (optional)"}
+            </Label>
+            <Textarea
+              id="stage-remarks"
+              autoFocus
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              rows={3}
+              placeholder="What you decided and why. This goes on the record."
+              className="mt-1.5 text-[13px]"
+            />
+            {remarksMissing && (
+              <p className="mt-1.5 text-[12px] text-destructive">
+                Remarks are required before you can go ahead.
+              </p>
+            )}
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

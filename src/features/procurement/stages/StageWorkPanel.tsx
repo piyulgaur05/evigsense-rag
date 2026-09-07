@@ -1,6 +1,13 @@
 import { RequisitionPanel } from "./RequisitionPanel";
 import { TecPanel } from "./TecPanel";
 import { TenderPanel } from "./TenderPanel";
+import { CommercialPanel } from "./CommercialPanel";
+import { CstPanel } from "./CstPanel";
+import { PncPanel } from "./PncPanel";
+import { ProposalPanel } from "./ProposalPanel";
+import { PurchaseOrderPanel } from "./PurchaseOrderPanel";
+import { GoodsReceiptPanel } from "./GoodsReceiptPanel";
+import { PaymentPanel } from "./PaymentPanel";
 import { STAGE_BRIEF } from "../lib/stages";
 import { formatDate, formatMoney } from "../lib/format";
 import type { CaseListItem, ProcurementStage, StageConfig } from "../types";
@@ -34,6 +41,13 @@ type StagePanelProps = {
 const STAGE_PANELS: Partial<Record<ProcurementStage, React.ComponentType<StagePanelProps>>> = {
   tender: TenderPanel,
   tec: TecPanel,
+  commercial: CommercialPanel,
+  cst: CstPanel,
+  pnc: PncPanel,
+  purchase_proposal: ProposalPanel,
+  purchase_order: PurchaseOrderPanel,
+  goods_receipt: GoodsReceiptPanel,
+  payment_recommendation: PaymentPanel,
 };
 
 /**

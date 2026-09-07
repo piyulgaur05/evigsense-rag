@@ -14,6 +14,10 @@ export type ProcurementCase = Tables["procurement_cases"]["Row"];
 export type ProcurementCaseInsert = Tables["procurement_cases"]["Insert"];
 export type StageConfig = Tables["procurement_stage_config"]["Row"];
 export type StageAction = Tables["procurement_stage_actions"]["Row"];
+/** An available action, plus what its own gate still lists as missing —
+ * empty once nothing stands between pressing it and it actually going
+ * through. */
+export type StageActionWithGaps = StageAction & { gaps: string[] };
 export type CaseEvent = Tables["procurement_case_events"]["Row"];
 export type StageHistoryEntry = Tables["procurement_stage_history"]["Row"];
 export type Clarification = Tables["procurement_clarifications"]["Row"];
@@ -168,3 +172,164 @@ export type TecAiEvidence = {
   detail: string | null;
   source: string | null;
 };
+
+// ===== The commercial desk =====
+
+export type CommercialRecord = Tables["procurement_commercial"]["Row"];
+export type CommercialQuote = Tables["procurement_commercial_quotes"]["Row"];
+export type QuoteLine = Tables["procurement_quote_lines"]["Row"];
+export type CommercialApproval = Tables["procurement_commercial_approvals"]["Row"];
+
+export type RankingBasis = "evaluated_cost" | "base_price" | "weighted_score";
+export type CommercialCompliance = "pending" | "compliant" | "conditionally_compliant" | "non_compliant";
+export type QuotePriceSource = "lines" | "manual" | "bid";
+export type ApprovalKind = "opening" | "statement" | "authority" | "purchase_officer" | "finance";
+export type ApprovalStatus = "approved" | "returned";
+
+export type QuoteScheduleIssueCode =
+  | "unmatched_row"
+  | "missing_line"
+  | "missing_rate"
+  | "quantity_mismatch"
+  | "amount_mismatch"
+  | "duplicate_line"
+  | "total_mismatch";
+export type QuoteScheduleIssueSeverity = "warning" | "error";
+export type QuoteScheduleIssue = {
+  code: QuoteScheduleIssueCode;
+  severity: QuoteScheduleIssueSeverity;
+  detail: string;
+  row?: number;
+  line_no?: number;
+  tender_item_id?: string;
+};
+
+export type QuoteScheduleLine = {
+  tender_item_id?: string;
+  line_no?: number;
+  item_name?: string;
+  unit_rate?: number | null;
+  quantity?: number | null;
+  amount?: number | null;
+};
+
+/** One bidder as the ranking read it — every input, every derived score, and
+ * why a bid could or could not be ranked. */
+export type CommercialRankingRow =
+  Database["public"]["Functions"]["procurement_commercial_ranking"]["Returns"][number];
+
+/** One published line for one bidder — the panel pivots this into the
+ * cross-bidder matrix. */
+export type CommercialLineComparisonRow =
+  Database["public"]["Functions"]["procurement_commercial_line_comparison"]["Returns"][number];
+
+export type CommercialReasonableness =
+  Database["public"]["Functions"]["procurement_commercial_reasonableness"]["Returns"][number];
+export type ReasonablenessStatus = "within" | "over" | "no_estimate";
+
+/** A bidder as the commercial desk shows it — the firm's name from the
+ * register, and the roster's own compliance and pricing fields. */
+export type BidderWithQuote = BidderWithVendor & {
+  quote: CommercialQuote | null;
+};
+
+// ===== The comparative statement =====
+
+export type CstVersion = Tables["procurement_cst_versions"]["Row"];
+export type CstVersionStatus = "draft" | "locked" | "superseded";
+export type CstScrutinyItem = Tables["procurement_cst_scrutiny"]["Row"];
+export type CstScrutinyItemKey =
+  | "arithmetic_verified"
+  | "taxes_and_loadings_consistent"
+  | "terms_brought_to_par"
+  | "estimate_comparison_recorded"
+  | "deviations_documented";
+export type CstScrutinyStatus = "pending" | "pass" | "fail" | "clarify";
+
+export type CommercialRecommendation = Tables["procurement_commercial_recommendations"]["Row"];
+export type CommercialRecommendationHistory =
+  Tables["procurement_commercial_recommendation_history"]["Row"];
+export type RecommendationOutcome =
+  | "award" | "send_back" | "clarification" | "reject_all" | "retender";
+export type JustificationReason =
+  | "delivery_lead_time"
+  | "lifecycle_cost_benefit"
+  | "oem_support_availability"
+  | "risk_mitigation_split"
+  | "technical_warranty_superiority"
+  | "non_responsiveness_rejection"
+  | "budget_excess"
+  | "other";
+
+/** The frozen shape of a locked comparative statement. Optional throughout: a
+ * draft version carries none of this, and it is read fresh instead. */
+export type CstSnapshot = {
+  case_no: string;
+  case_title: string;
+  currency: string;
+  ranking_basis: RankingBasis | null;
+  generated_on: string;
+  bill: Array<{
+    line_no: number; item_name: string; specification: string | null;
+    quantity: number; unit: string | null; hsn_code: string | null;
+    estimated_rate: number | null; line_amount: number;
+  }>;
+  bidders: CommercialRankingRow[];
+  matrix: CommercialLineComparisonRow[];
+  issues: Array<{ bidder_id: string; vendor_name: string; code: string; detail: string }>;
+  reasonableness: CommercialReasonableness | null;
+  recommendation: {
+    outcome: RecommendationOutcome;
+    recommended_bidder_id: string | null;
+    recommended_vendor_name: string | null;
+    computed_l1_bidder_id: string | null;
+    computed_l1_vendor_name: string | null;
+    justification_reason: JustificationReason | null;
+    justification_text: string | null;
+    authority_required: boolean;
+    authority_reasons: string[];
+    remarks: string | null;
+    recommended_by: { id: string | null; name: string | null };
+    recommended_at: string;
+  } | null;
+  scrutiny: Array<{ item_key: CstScrutinyItemKey; status: CstScrutinyStatus; remarks: string | null }>;
+  approvals: {
+    opening: { status: ApprovalStatus; by: { id: string | null; name: string | null }; at: string; remarks: string | null } | null;
+    statement: { status: ApprovalStatus; by: { id: string | null; name: string | null }; at: string; remarks: string | null } | null;
+    authority: { status: ApprovalStatus; by: { id: string | null; name: string | null }; at: string; remarks: string | null } | null;
+  };
+};
+
+// ===== Price negotiation =====
+
+export type Negotiation = Tables["procurement_negotiations"]["Row"];
+export type NegotiationStatus = "open" | "agreed" | "failed" | "returned";
+export type NegotiationRound = Tables["procurement_negotiation_rounds"]["Row"];
+export type NegotiationRoundStatus = "open" | "closed";
+
+// ===== Purchase proposal =====
+
+export type PurchaseProposal = Tables["procurement_purchase_proposals"]["Row"];
+
+// ===== Purchase order =====
+
+export type PurchaseOrder = Tables["procurement_purchase_orders"]["Row"];
+export type PurchaseOrderStatus = "draft" | "issued";
+export type VendorAckStatus = "pending" | "acknowledged" | "accepted" | "rejected";
+export type PoLine = Tables["procurement_po_lines"]["Row"];
+export type PoAmendment = Tables["procurement_po_amendments"]["Row"];
+export type PoAiDraft = Tables["procurement_po_ai_drafts"]["Row"];
+
+// ===== Goods receipt =====
+
+export type GoodsReceipt = Tables["procurement_goods_receipts"]["Row"];
+export type GoodsReceiptStatus = "open" | "closed" | "forwarded";
+export type GrnLine = Tables["procurement_grn_lines"]["Row"];
+export type GrnSummaryRow =
+  Database["public"]["Functions"]["procurement_grn_summary"]["Returns"][number];
+
+// ===== Payment recommendation =====
+
+export type PaymentRecommendation = Tables["procurement_payment_recommendations"]["Row"];
+export type PaymentStatus = "pending" | "cleared";
+export type PaymentAiDraft = Tables["procurement_payment_ai_drafts"]["Row"];

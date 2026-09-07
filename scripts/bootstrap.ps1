@@ -136,6 +136,8 @@ function Invoke-Migrations {
   }
 
   Write-Host "Applying $($pending.Count) of $($files.Count) migrations..." -ForegroundColor Cyan
+  $remoteTmp = "/tmp/jyoma-migration-apply.sql"
+  $localTmp = Join-Path ([System.IO.Path]::GetTempPath()) "jyoma-migration-apply.sql"
   foreach ($f in $pending) {
     Write-Host "  -> $($f.Name)"
     $name = $f.Name -replace "'", "''"
@@ -143,11 +145,25 @@ function Invoke-Migrations {
     # --single-transaction: the file and its ledger row commit together, so a
     # failure rolls back cleanly instead of leaving a half-applied migration.
     $sql = "$body`nINSERT INTO public.schema_migrations(version) VALUES ('$name');"
-    $sql | & docker exec -i $Container psql -U postgres -d postgres -v ON_ERROR_STOP=1 --single-transaction --quiet
+    # Written to a file and copied in with `docker cp`, not piped through
+    # `docker exec -i`'s stdin. PowerShell 5.1 re-encodes anything sent down a
+    # pipeline to an external process using the console's own output encoding
+    # -- not UTF-8 by default on Windows -- so any migration carrying so much
+    # as an em dash or a curly quote in a string literal had that character
+    # silently replaced with '?' the moment it crossed the pipe. This bit
+    # 'pnc.agreed'/'pnc.failed' and the cost-centre lookups (fixed in
+    # 20260911160000) and would have bitten every future migration the same
+    # way. A byte-for-byte file written with an explicit UTF-8 encoding and
+    # copied in has no such conversion step.
+    [System.IO.File]::WriteAllText($localTmp, $sql, (New-Object System.Text.UTF8Encoding($false)))
+    docker cp $localTmp "${Container}:${remoteTmp}" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not copy $($f.Name) into the container." }
+    docker exec $Container psql -U postgres -d postgres -v ON_ERROR_STOP=1 --single-transaction --quiet -f $remoteTmp
     if ($LASTEXITCODE -ne 0) {
       throw "Migration failed (rolled back): $($f.Name)"
     }
   }
+  Remove-Item -Path $localTmp -ErrorAction SilentlyContinue
   Write-Host "  Migrations applied." -ForegroundColor Green
 }
 

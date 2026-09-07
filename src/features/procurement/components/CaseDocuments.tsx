@@ -36,7 +36,7 @@ const INGEST_LABEL: Record<string, string> = {
   failed: "could not be read",
 };
 
-function IngestState({ status }: { status: string | null | undefined }) {
+export function IngestState({ status }: { status: string | null | undefined }) {
   if (!status) return null;
   const label = INGEST_LABEL[status] ?? status;
 
