@@ -5,3 +5,4 @@ dist/**
 docker/volumes/vllm/*.jinja
 # Supabase CLI scratch (npm run gen:types)
 supabase/.temp
+docker/.env
