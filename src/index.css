@@ -273,6 +273,51 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Quiet scrollbars.
+
+   A panel that scrolls inside the page (the activity rail, a long list) gets
+   the platform's default bar otherwise: on Windows a wide grey trough that
+   cuts a hard vertical edge through a card and reads as chrome from another
+   application. This is the same bar in the room's own colours -- no track, a
+   thumb the weight of a border that darkens under the pointer.
+
+   Firefox takes `scrollbar-width`/`scrollbar-color`; WebKit and Chromium take
+   the pseudo-elements. Both are stated because neither covers both engines.
+--------------------------------------------------------------------------- */
+
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.scroll-quiet::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-quiet::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-quiet::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  /* Fully rounded, and inset by its own border so the thumb reads as a mark
+     on the paper rather than a rail bolted to the edge of it. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+}
+
+.scroll-quiet:hover::-webkit-scrollbar-thumb,
+.scroll-quiet::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.45);
+}
+
+.scroll-quiet::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
    CitationTrace — the landing hero's one orchestrated moment.
 
    Every step shares a 7s cycle and differs only in which slice of it it acts,

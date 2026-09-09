@@ -13,7 +13,6 @@
 | chat | `google/gemma-4-e4b` (LM Studio) | ✅ working | Real completion returned "PONG" |
 | translate | `google/gemma-4-e4b` (LM Studio) | ✅ working | Real RU→EN completion |
 | embed | `Qwen/Qwen3-VL-Embedding-2B` (vLLM :8103) | ✅ working | End-to-end via `embed()`: `dim=1024 norm=1.0000` |
-| rerank | `Qwen/Qwen3-VL-Reranker-2B` (vLLM :8104) | ⚠️ **never started** | Blocked by 8 GB VRAM — config is correct, untested |
 | ocr | `chandra-ocr-2` (LM Studio) | ⚠️ **broken for PDFs** | Fails on scanned PDFs — see §5.1 |
 
 **App state:** 72/72 migrations applied. 3 seeded users. `rag-assistant` returns HTTP 200.
@@ -27,15 +26,15 @@ Document chat works end-to-end *except* that scanned PDFs have no real text to s
 
 The whole point of moving: this box has 8 GB VRAM, which forced compromises the Spark removes.
 
-- **All four models can run at once.** On 8 GB, embed alone needed `--gpu-memory-utilization 0.70`
-  (~5.2 GB), leaving nothing for rerank. Spark's ~119.7 GB unified pool makes the defaults in
-  `docker-compose.models.yml` (chat 0.45 / ocr 0.15 / embed 0.08 / rerank 0.08 = **0.76 total**,
-  ~28 GB headroom) comfortable.
+- **All three models can run at once.** On 8 GB, embed alone needed `--gpu-memory-utilization 0.70`
+  (~5.2 GB), leaving nothing for anything else. Spark's ~119.7 GB unified pool makes the defaults in
+  `docker-compose.models.yml` (chat 0.45 / ocr 0.15 / embed 0.08 = **0.68 total**,
+  ~38 GB headroom) comfortable.
 - **Chat moves off LM Studio** back to a real `Qwen3.5-35B-A3B` on vLLM.
 - **OCR moves to `datalab-to/chandra-ocr-2` on vLLM**, which may fix §5.1 for free — vLLM's
   chat-completions endpoint is less strict than LM Studio's about `image_url` payloads. **Test this,
   don't assume it.**
-- **LM Studio is no longer needed at all** once all four are on vLLM.
+- **LM Studio is no longer needed at all** once all three are on vLLM.
 
 ---
 
@@ -47,14 +46,7 @@ The whole point of moving: this box has 8 GB VRAM, which forced compromises the 
 git clone <repo> && cd evigsense-rag && git checkout fix/vllm-model
 ```
 
-**Fetch the reranker chat template — it is gitignored and will NOT be in your clone.**
-`vllm-rerank` exits immediately at startup without it:
-
-```bash
-mkdir -p docker/volumes/vllm
-curl -fsSL -o docker/volumes/vllm/reranker_template.jinja \
-  https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
-```
+`HF_TOKEN` is only needed for gated repos. Every model here is public, so it can stay empty.
 
 ### 3.2 Edit `docker/.env`
 
@@ -70,7 +62,6 @@ OCR_BASE_URL=http://vllm-ocr:8000/v1
 OCR_MODEL=chandra-ocr-2
 
 EMBED_BASE_URL=http://vllm-embed:8000/v1
-RERANK_BASE_URL=http://vllm-rerank:8000/v1
 
 # Translation currently rides LM Studio's gemma. Either move it to the Spark chat model:
 TRANSLATE_BASE_URL=http://vllm-chat:8000/v1
@@ -129,7 +120,7 @@ Seeding runs automatically at the end and creates the three users.
 docker logs jyoma-edge-functions 2>&1 | grep '^\[ai\]'
 ```
 
-Expect all six roles pointing at `vllm-*` service names. This log also **warns** if a
+Expect all five roles pointing at `vllm-*` service names. This log also **warns** if a
 HuggingFace-style model id is pointed at LM Studio (a guard added after that exact mistake).
 
 ```bash
@@ -137,8 +128,6 @@ HuggingFace-style model id is pointed at LM Studio (a guard added after that exa
 curl -s localhost:8101/v1/models   # chat
 curl -s localhost:8102/v1/models   # ocr
 curl -s localhost:8103/v1/models   # embed
-curl -s -X POST localhost:8104/v1/rerank -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen/Qwen3-VL-Reranker-2B","query":"q","documents":["a","b"],"top_n":2}'
 ```
 
 ```sql
@@ -153,20 +142,19 @@ Then upload a scanned PDF through the UI and open document chat.
 
 ---
 
-## 4. Reranker — first real test happens on the Spark
+## 4. Chat model — keep it a Mixture-of-Experts
 
-It has **never successfully run.** The config, client code, and compose service are all written
-and validated as far as possible without hardware:
+`Qwen3.5-35B-A3B` activates ~3B parameters per token, and decode speed tracks *active*
+parameters, not total. This is load-bearing, not an aesthetic choice:
 
-- `rerank()` in `_shared/ai.ts` — tested against a mock server (score ordering, out-of-range index
-  rejection, correct request shape).
-- `rag-assistant` pulls `RERANK_CANDIDATES=50` from pgvector, reranks, keeps `RERANK_TOP_K=8`.
-- Reranking is **opt-in**: blank `RERANK_MODEL` skips it entirely, and a failed rerank call logs a
-  warning and falls back to vector ordering rather than breaking the answer.
-
-What was never exercised: the `hf_overrides` scoring-head swap, the chat template, and whether
-vLLM's `/v1/rerank` response shape matches what `rerank()` parses. **Watch `vllm-rerank` logs on
-first boot.**
+- A dense `Llama-3.1-70B-Instruct` at 4-bit AWQ was tried on this box and measured
+  **~5 tok/s** (vLLM's own `Avg generation throughput`, and a timed 200-token completion).
+  GB10 has ~273 GB/s of bandwidth against ~37 GiB of weights, so ~7 tok/s is the ceiling.
+- `translate-markdown` sends a whole document as one chunk when the markdown has no `---`
+  page separators, and aborts at `TRANSLATION_TIMEOUT_MS` (180 s). At 5 tok/s that budget
+  buys ~900 tokens; a 6.5k-character document needs ~2700. Every attempt timed out.
+- Document chat survived the dense model (~72 s for a short answer). Translation did not.
+  Translation is the workload that sets the floor on decode speed here.
 
 ---
 
@@ -249,7 +237,7 @@ Inference resolves **per role** in `supabase/functions/_shared/ai.ts`. Each role
 `<ROLE>_BASE_URL` / `<ROLE>_API_KEY` / `<ROLE>_MODEL`, falling back to the `LMSTUDIO_*` values —
 so unsetting the per-role vars reverts everything to a single LM Studio endpoint.
 
-Roles: `chat`, `translate`, `embed`, `rerank`, `ocr`, `audio`.
+Roles: `chat`, `translate`, `embed`, `ocr`, `audio`.
 
 Model fallback is **endpoint-aware on purpose**: a role only inherits the chat model if it resolves
 to the same base URL as chat. Without that, pointing chat at a remote vLLM would send
@@ -259,18 +247,17 @@ to the same base URL as chat. Without that, pointing chat at a remote vLLM would
 Edge Functions → vLLM :8101  Qwen3.5-35B-A3B        (chat, summary, metadata, tags)
                → vLLM :8102  chandra-ocr-2          (OCR via chat-completions + image_url)
                → vLLM :8103  Qwen3-VL-Embedding-2B  (embeddings, 2048→1024 client-side MRL)
-               → vLLM :8104  Qwen3-VL-Reranker-2B   (optional rerank stage)
 ```
 
 **Files that matter:**
 
 | Path | What |
 |---|---|
-| `supabase/functions/_shared/ai.ts` | Per-role endpoint resolution, `chat`/`embed`/`rerank`, boot-time config log |
+| `supabase/functions/_shared/ai.ts` | Per-role endpoint resolution, `chat`/`embed`, boot-time config log |
 | `supabase/functions/_shared/ocr.ts` | OCR backends (`lmstudio` VLM vs `chandra-native`) |
-| `supabase/functions/rag-assistant/index.ts` | Retrieval + rerank + answer |
-| `docker/docker-compose.models.yml` | **Spark**: all four vLLM servers, arm64/sm_121a |
-| `docker/docker-compose.vllm.yml` | x86 CUDA: embed + rerank only (dev-box file) |
+| `supabase/functions/rag-assistant/index.ts` | Retrieval + answer |
+| `docker/docker-compose.models.yml` | **Spark**: all three vLLM servers, arm64/sm_121a |
+| `docker/docker-compose.vllm.yml` | x86 CUDA: embed only (dev-box file) |
 | `scripts/seed-users.mjs` | Idempotent user seeding via GoTrue admin API |
 | `scripts/bootstrap.ps1` | Windows: ledgered migrations + seed |
 | `scripts/apply-migrations.sh` | Linux/Spark equivalent |
@@ -283,11 +270,11 @@ own non-OpenAI `/ocr` server.
 
 ## 8. Suggested order on the Spark
 
-1. Clone, checkout `fix/vllm-model`, **fetch the jinja template** (§3.1).
+1. Clone, checkout `fix/vllm-model` (§3.1).
 2. Edit `docker/.env` per §3.2.
-3. `up -d` models → watch all four reach healthy. Rerank is the risky one.
+3. `up -d` models → watch all three reach healthy.
 4. `up -d` app stack, run migrations + seed.
-5. Check the `[ai]` boot log — all six roles on `vllm-*`.
+5. Check the `[ai]` boot log — all five roles on `vllm-*`.
 6. Log in, upload a scanned PDF, open document chat.
 7. **If OCR still fails on PDFs → §5.1.** That is the one known-broken feature.
 8. Once stable, merge `fix/vllm-model` → `main`.

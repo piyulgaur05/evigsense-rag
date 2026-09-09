@@ -212,13 +212,13 @@ export default function ProcurementCase() {
                   Every decision, movement, question and document on this case.
                 </p>
               </header>
-              <div className="max-h-[28rem] overflow-y-auto px-5 py-5">
+              <div className="scroll-quiet max-h-[28rem] overflow-y-auto overflow-x-hidden px-5 py-5">
                 <CaseTimeline caseId={procurementCase.id} />
               </div>
             </section>
           </aside>
 
-          <div className="space-y-6 xl:hidden lg:col-start-2">
+          <div className="min-w-0 space-y-6 xl:hidden lg:col-start-2">
             <CaseSignatures caseId={procurementCase.id} />
             <CaseAssistant
               caseId={procurementCase.id}
@@ -234,7 +234,7 @@ export default function ProcurementCase() {
                   Every decision, movement, question and document on this case.
                 </p>
               </header>
-              <div className="max-h-[28rem] overflow-y-auto px-5 py-5">
+              <div className="scroll-quiet max-h-[28rem] overflow-y-auto overflow-x-hidden px-5 py-5">
                 <CaseTimeline caseId={procurementCase.id} />
               </div>
             </section>

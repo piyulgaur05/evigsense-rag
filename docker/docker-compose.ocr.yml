@@ -32,8 +32,8 @@
 # 2.36M px (2280 tokens), which the relay's OCR_MAX_IMAGE_PIXELS mirrors so the
 # downscale happens once, on the CPU side, with a good resampler.
 #
-# Do NOT run docker-compose.vllm.yml (embed/rerank) at the same time on an 8 GB
-# card -- those want ~5 GB of their own and this will fail to allocate.
+# Do NOT run docker-compose.vllm.yml (embed) at the same time on an 8 GB
+# card -- it wants ~5 GB of its own and this will fail to allocate.
 # ---------------------------------------------------------------------------
 
 # Must match `name:` in docker-compose.yml so both files land in one project.

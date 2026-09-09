@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
-import { chatCompletionText, embed, isRerankEnabled, rerank } from "../_shared/ai.ts";
+import { chatCompletionText, embed } from "../_shared/ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -223,12 +223,6 @@ serve(async (req) => {
     // Use vector similarity search - filter by documentId if provided
     // Format embedding as PostgreSQL vector string format: [x,y,z,...]
     const embeddingString = `[${queryEmbedding.join(',')}]`;
-    
-    // With a reranker in front of the LLM we can afford a wide, low-precision
-    // candidate pool: the cross-encoder does the precision work afterwards.
-    const rerankOn = isRerankEnabled();
-    const RERANK_CANDIDATES = parseInt(Deno.env.get('RERANK_CANDIDATES') ?? '50', 10) || 50;
-    const RERANK_TOP_K = parseInt(Deno.env.get('RERANK_TOP_K') ?? '8', 10) || 8;
 
     // A case question searches the case's own paperwork. The ordinary search
     // is scoped to what the asker uploaded, which is right for a personal
@@ -241,7 +235,7 @@ serve(async (req) => {
           _user_id: user.id,
           query_embedding: embeddingString,
           match_threshold: 0.0,
-          match_count: rerankOn ? RERANK_CANDIDATES : 30,
+          match_count: 30,
           _bidder_id: bidderId ?? null,
         })
       : await supabase
@@ -249,8 +243,8 @@ serve(async (req) => {
           query_embedding: embeddingString,
           // Lower threshold when scoped to a single document (cross-lingual queries
           // e.g. English question on Chinese/Russian doc score much lower)
-          match_threshold: rerankOn ? 0.0 : (documentId ? 0.0 : 0.3),
-          match_count: rerankOn ? RERANK_CANDIDATES : (documentId ? 50 : 15),
+          match_threshold: documentId ? 0.0 : 0.3,
+          match_count: documentId ? 50 : 15,
           filter_user_id: user.id
         });
 
@@ -264,35 +258,6 @@ serve(async (req) => {
     if (documentId && filteredByDocument.length > 0) {
       filteredByDocument = filteredByDocument.filter((chunk: any) => chunk.document_id === documentId);
       console.log(`Filtered to ${filteredByDocument.length} chunks from document ${documentId}`);
-    }
-
-    // Cross-encoder rerank of the candidate pool. Replaces `similarity` with the
-    // reranker score so every downstream step (image boost, page filtering,
-    // source ranking) keeps working unchanged. Best-effort: a reranker that is
-    // down or slow degrades ordering, it must not break the answer.
-    if (rerankOn && filteredByDocument.length > 1) {
-      const t0 = Date.now();
-      try {
-        const docs = filteredByDocument.map((c: any) => String(c?.chunk_text ?? ''));
-        const hits = await rerank(query, docs, { topN: RERANK_TOP_K });
-        if (hits.length > 0) {
-          filteredByDocument = hits.map((h) => ({
-            ...filteredByDocument[h.index],
-            vector_similarity: filteredByDocument[h.index]?.similarity,
-            // Clamp: downstream code treats similarity as a 0..1 fraction.
-            similarity: Math.max(0, Math.min(1, h.score)),
-          }));
-          console.log(
-            `Reranked ${docs.length} candidates -> top ${filteredByDocument.length} in ${Date.now() - t0}ms`,
-          );
-        }
-      } catch (error) {
-        console.warn(
-          `Rerank skipped (${error instanceof Error ? error.message : String(error)}); ` +
-            `falling back to vector order.`,
-        );
-        filteredByDocument = filteredByDocument.slice(0, RERANK_TOP_K);
-      }
     }
 
     // Detect if the user query is asking about a figure/image/diagram and, if so,
@@ -320,10 +285,9 @@ serve(async (req) => {
 
     // Filter to keep only chunks from top 2 most relevant pages
     let filteredChunks = filteredByDocument;
-    // The top-2-pages heuristic exists to compensate for noisy vector ranking.
-    // A cross-encoder has already done that selection, so re-filtering here only
-    // throws away good context.
-    if (!documentId && !caseId && !rerankOn && filteredChunks.length > 0) {
+    // The top-2-pages heuristic compensates for noisy vector ranking, which is
+    // the only ranking there is now that nothing re-scores the candidates.
+    if (!documentId && !caseId && filteredChunks.length > 0) {
       // Only apply page filtering if not searching within a specific document
       // Group chunks by page and find max similarity per page
       const pageRelevance = new Map<string, number>();

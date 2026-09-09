@@ -1,10 +1,9 @@
 # vLLM model servers for NVIDIA DGX Spark (GB10 / Grace Blackwell, sm_121a, arm64).
 #
-# Serves all four roles the app needs, each on its own OpenAI-compatible port:
-#   8101  chat     Qwen/Qwen3.5-35B-A3B          -> CHAT_BASE_URL
-#   8102  ocr      datalab-to/chandra-ocr-2      -> OCR_BASE_URL
-#   8103  embed    Qwen/Qwen3-VL-Embedding-2B    -> EMBED_BASE_URL
-#   8104  rerank   Qwen/Qwen3-VL-Reranker-2B     -> RERANK_BASE_URL
+# Serves all three roles the app needs, each on its own OpenAI-compatible port:
+#   8101  chat   Qwen/Qwen3.5-35B-A3B          -> CHAT_BASE_URL
+#   8102  ocr    datalab-to/chandra-ocr-2      -> OCR_BASE_URL
+#   8103  embed  Qwen/Qwen3-VL-Embedding-2B    -> EMBED_BASE_URL
 #
 # Run standalone on the Spark:
 #   docker compose --env-file .env -f docker-compose.models.yml up -d
@@ -17,10 +16,10 @@
 # MEMORY IS THE BINDING CONSTRAINT. Spark has ONE ~119.7 GiB unified pool shared
 # by the OS, container runtime, page cache, model weights and KV cache -- there
 # is no separate VRAM. Each --gpu-memory-utilization below is a fraction of that
-# whole pool, and the four services ADD UP. The defaults total 0.76, leaving
-# ~28 GiB of headroom. Raise one and you must lower another.
+# whole pool, and the three services ADD UP. The defaults total 0.68, leaving
+# ~38 GiB of headroom. Raise one and you must lower another.
 #
-# Services are chained with depends_on/service_healthy on purpose: four models
+# Services are chained with depends_on/service_healthy on purpose: three models
 # warming up simultaneously spikes allocation far above their steady state and
 # OOMs the box. Sequential startup is slower but survivable.
 # ---------------------------------------------------------------------------
@@ -76,6 +75,10 @@ x-vllm-common: &vllm-common
 services:
   # --- Chat: assistant, summaries, metadata extraction, auto-tagging ---------
   # Largest resident model, so it loads first and takes the biggest slice.
+  # Qwen3.5-35B-A3B is a Mixture-of-Experts: only ~3B parameters are active per
+  # token, so decode is roughly an order of magnitude faster than a dense model
+  # of comparable total size. translate-markdown depends on that -- a dense 70B
+  # measured ~5 tok/s on this box and timed every translation out at 180s.
   # NVFP4 is the right quantization on Blackwell -- it cuts memory pressure more
   # than anything else you can change here.
   vllm-chat:
@@ -143,35 +146,6 @@ services:
       - --gpu-memory-utilization=${VLLM_EMBED_MEM:-0.08}
       # Chunks run ~1500 chars, but page images cost far more tokens than text.
       - --max-model-len=${VLLM_EMBED_CTX:-8192}
-
-  # --- Reranking: Qwen3-VL-Reranker-2B, sequence-classification head --------
-  # NOTE: this one needs a chat template that ships with the Qwen3-VL-Embedding
-  # repo, not with the model weights. Fetch it before first start:
-  #   mkdir -p docker/volumes/vllm && curl -fsSL -o docker/volumes/vllm/reranker_template.jinja \
-  #     https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
-  # Without it the container exits at startup.
-  vllm-rerank:
-    <<: *vllm-common
-    container_name: jyoma-vllm-rerank
-    depends_on:
-      vllm-embed:
-        condition: service_healthy
-    ports:
-      - "${VLLM_RERANK_PORT:-8104}:8000"
-    command:
-      - vllm
-      - serve
-      - ${RERANK_MODEL_ID:-Qwen/Qwen3-VL-Reranker-2B}
-      - --served-model-name=${RERANK_MODEL:-Qwen/Qwen3-VL-Reranker-2B}
-      - --runner=pooling
-      # Converts the causal LM into the yes/no scoring head the /rerank route needs.
-      - --hf_overrides={"architectures":["Qwen3VLForSequenceClassification"],"classifier_from_token":["no","yes"],"is_original_qwen3_reranker":true}
-      - --chat-template=/config/reranker_template.jinja
-      - --host=0.0.0.0
-      - --port=8000
-      - --gpu-memory-utilization=${VLLM_RERANK_MEM:-0.08}
-      # Must fit query + the longest candidate chunk in one scoring pass.
-      - --max-model-len=${VLLM_RERANK_CTX:-4096}
 
   # --- OCR relay: rasterizes PDF pages before handing them to vllm-ocr ------
   # _shared/ocr.ts's chandra-native backend posts raw PDF/image bytes to

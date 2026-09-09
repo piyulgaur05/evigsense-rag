@@ -78,13 +78,22 @@ which logs the resolved endpoint for every role at boot (`[ai] …` lines in the
 
 | Role | Endpoint |
 |---|---|
-| chat, translate | `https://evigsense.ngrok.dev/v1` — `Qwen/Qwen3.5-35B-A3B`, 32k context |
-| embed | `https://evigsense-ai-service.ngrok.app/v1` — `Qwen/Qwen3-VL-Embedding-2B` |
-| rerank | off — that host serves no `/v1/rerank`, so `RERANK_MODEL` is empty |
+| chat, translate | `http://vllm-chat:8000/v1` — `Qwen/Qwen3.5-35B-A3B`, 32k context |
+| embed | `http://vllm-embed:8000/v1` — `Qwen/Qwen3-VL-Embedding-2B` |
 | ocr | local `vllm-ocr` + `chandra-relay`, `docker/docker-compose.ocr.yml` |
 
-The embedding server has no Matryoshka support, so `EMBED_DIMENSIONS` stays empty
-and `embed()` truncates 2048 → 1024 client-side to match the `vector(1024)` column.
+Everything is on this box now. Both roles previously pointed at ngrok tunnels
+(`evigsense.ngrok.dev`, `evigsense-ai-service.ngrok.app`); both went offline
+(`ERR_NGROK_3200`) and took chat and document chat down with them, so they were
+repointed at the local containers by service name.
+
+Chat must stay on a Mixture-of-Experts. `Qwen3.5-35B-A3B` activates ~3B
+parameters per token; a dense Llama-3.1-70B was tried here and measured ~5 tok/s,
+which timed out every `translate-markdown` request at its 180 s limit.
+
+The embedding server serves 2048-dim vectors with no Matryoshka support, so
+`EMBED_DIMENSIONS` stays empty and `embed()` truncates 2048 → 1024 client-side
+(L2-renormalized) to match the `vector(1024)` column.
 
 OCR runs on an 8 GB RTX 4070 and is tuned tightly — see the "Chandra OCR on this
 machine" section of README.md before changing any `VLLM_CUDA_OCR_*` value.

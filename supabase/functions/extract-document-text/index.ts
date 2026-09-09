@@ -221,6 +221,114 @@ async function extractTextFromDOCX(fileData: Uint8Array): Promise<{ text: string
   }
 }
 
+/** Spreadsheet cells arrive as `<v>` payloads whose meaning depends on `t`. */
+function xmlText(fragment: string): string {
+  return fragment
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** "AB12" -> 27. Cells are sparse in the file; the grid is not. */
+function columnIndex(ref: string): number {
+  const letters = ref.replace(/[0-9]/g, '');
+  let index = 0;
+  for (const ch of letters) index = index * 26 + (ch.charCodeAt(0) - 64);
+  return index;
+}
+
+/**
+ * Read a spreadsheet as tab-separated rows.
+ *
+ * XLSX is a zip of XML, and JSZip is already here for DOCX, so this needs no
+ * new dependency and no network fetch on a box that is meant to run offline.
+ * The output is deliberately a grid rather than prose: a bill of quantities is
+ * a table, and every reader downstream -- the extractor, the case assistant,
+ * a person looking at the stored text -- reads columns better than sentences.
+ */
+async function extractTextFromXLSX(fileData: Uint8Array): Promise<{ text: string, pageMap: Array<{ page: number, startIndex: number, endIndex: number }> }> {
+  const zip = await JSZip.loadAsync(fileData);
+
+  // Shared strings: most text in a workbook lives here once and is referenced
+  // by index from every cell that uses it.
+  const shared: string[] = [];
+  const sharedXml = await zip.file('xl/sharedStrings.xml')?.async('text');
+  if (sharedXml) {
+    for (const si of sharedXml.match(/<si\b[\s\S]*?<\/si>/g) ?? []) {
+      // A run-formatted string is several <t> pieces of one value.
+      const parts = si.match(/<t\b[^>]*>[\s\S]*?<\/t>/g) ?? [];
+      shared.push(parts.map(xmlText).join(''));
+    }
+  }
+
+  // Sheet name -> file, via the workbook's relationships. Falling back to
+  // sheet1.xml, sheet2.xml in declaration order covers files whose rels are
+  // missing, which some generators produce.
+  const workbookXml = await zip.file('xl/workbook.xml')?.async('text') ?? '';
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('text') ?? '';
+  const targets = new Map<string, string>();
+  for (const rel of relsXml.match(/<Relationship\b[^>]*>/g) ?? []) {
+    const id = rel.match(/Id="([^"]+)"/)?.[1];
+    const target = rel.match(/Target="([^"]+)"/)?.[1];
+    if (id && target) targets.set(id, target.replace(/^\/?xl\//, '').replace(/^\.\//, ''));
+  }
+
+  const sheets: Array<{ name: string, path: string }> = [];
+  const declarations = workbookXml.match(/<sheet\b[^>]*>/g) ?? [];
+  declarations.forEach((declaration, position) => {
+    const name = declaration.match(/name="([^"]+)"/)?.[1] ?? `Sheet${position + 1}`;
+    const relId = declaration.match(/r:id="([^"]+)"/)?.[1];
+    const target = relId ? targets.get(relId) : undefined;
+    sheets.push({ name: xmlText(name), path: `xl/${target ?? `worksheets/sheet${position + 1}.xml`}` });
+  });
+  if (sheets.length === 0) sheets.push({ name: 'Sheet1', path: 'xl/worksheets/sheet1.xml' });
+
+  const out: string[] = [];
+  for (const sheet of sheets) {
+    const sheetXml = await zip.file(sheet.path)?.async('text');
+    if (!sheetXml) continue;
+
+    out.push(`# Sheet: ${sheet.name}`);
+    for (const row of sheetXml.match(/<row\b[\s\S]*?(?:\/>|<\/row>)/g) ?? []) {
+      const cells: string[] = [];
+      for (const cell of row.match(/<c\b[\s\S]*?(?:\/>|<\/c>)/g) ?? []) {
+        const ref = cell.match(/r="([A-Z]+[0-9]+)"/)?.[1];
+        const type = cell.match(/t="([^"]+)"/)?.[1];
+
+        let value = '';
+        if (type === 'inlineStr') {
+          const parts = cell.match(/<t\b[^>]*>[\s\S]*?<\/t>/g) ?? [];
+          value = parts.map(xmlText).join('');
+        } else {
+          const raw = cell.match(/<v\b[^>]*>([\s\S]*?)<\/v>/)?.[1];
+          if (raw !== undefined) {
+            if (type === 's') value = shared[Number(raw)] ?? '';
+            else if (type === 'b') value = raw === '1' ? 'TRUE' : 'FALSE';
+            else value = xmlText(raw);
+          }
+        }
+
+        // Hold the cell's own column: a blank in the middle of a row is
+        // information, and a shifted grid reads as different data.
+        const at = ref ? columnIndex(ref) - 1 : cells.length;
+        while (cells.length < at) cells.push('');
+        cells[at] = value.replace(/[\t\r\n]+/g, ' ').trim();
+      }
+      out.push(cells.join('\t'));
+    }
+  }
+
+  // Trailing empty rows are what a spreadsheet's "1000 rows" usually means.
+  while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
+
+  const text = out.join('\n').slice(0, 500_000);
+  console.log(`Extracted ${text.length} characters from ${sheets.length} sheet(s)`);
+  return { text, pageMap: [{ page: 1, startIndex: 0, endIndex: text.length }] };
+}
+
 // Extract text from images using Chandra OCR (LM Studio VLM or native server)
 async function extractTextFromImage(fileData: Uint8Array, mimeType: string = 'image/png'): Promise<string> {
   try {
@@ -565,6 +673,12 @@ serve(async (req) => {
       const result = await extractTextFromDOCX(uint8Array);
       extractedText = result.text;
       pageMap = result.pageMap;
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+               mimeType === 'application/vnd.ms-excel.sheet.macroEnabled.12') {
+      console.log('Extracting text from XLSX...');
+      const result = await extractTextFromXLSX(uint8Array);
+      extractedText = result.text;
+      pageMap = result.pageMap;
     } else if (mimeType?.startsWith('image/')) {
       // For images (JPG, PNG, etc.), use OCR
       console.log('Extracting text from image using OCR...');
@@ -579,6 +693,10 @@ serve(async (req) => {
       const decoder = new TextDecoder();
       extractedText = decoder.decode(uint8Array);
       pageMap = [{ page: 1, startIndex: 0, endIndex: extractedText.length }];
+    } else if (mimeType === 'application/vnd.ms-excel') {
+      // The pre-2007 binary format is not a zip and nothing here can read it.
+      // Say which format is the problem rather than only naming the MIME type.
+      throw new Error('Legacy .xls workbooks cannot be read. Save the file as .xlsx or .csv and upload it again.');
     } else {
       throw new Error(`Unsupported file type: ${mimeType}`);
     }

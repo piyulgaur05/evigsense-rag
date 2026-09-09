@@ -91,6 +91,11 @@ services:
       RLIMIT_NOFILE: "10000"
       APP_NAME: realtime
       SEED_SELF_HOST: "true"
+      # Realtime resolves the tenant from the first label of the Host header,
+      # and kong.yml forwards to http://realtime:4000/socket/ -- so it looks up
+      # external_id "realtime". The seed's own default is "realtime-dev", which
+      # left every websocket handshake answering 403 TenantNotFound.
+      SELF_HOST_TENANT_NAME: realtime
       RUN_JANITOR: "true"
 
   storage:
@@ -144,12 +149,6 @@ services:
       EMBED_API_KEY: ${EMBED_API_KEY:-}
       EMBED_MODEL: ${EMBED_MODEL:-}
       EMBED_DIMENSIONS: ${EMBED_DIMENSIONS:-}
-      # Reranking: opt-in, skipped entirely when RERANK_MODEL is empty.
-      RERANK_BASE_URL: ${RERANK_BASE_URL:-}
-      RERANK_API_KEY: ${RERANK_API_KEY:-}
-      RERANK_MODEL: ${RERANK_MODEL:-}
-      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-50}
-      RERANK_TOP_K: ${RERANK_TOP_K:-8}
       LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL}
       LMSTUDIO_API_KEY: ${LMSTUDIO_API_KEY}
       LMSTUDIO_CHAT_MODEL: ${LMSTUDIO_CHAT_MODEL}

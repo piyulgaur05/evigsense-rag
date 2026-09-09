@@ -40,7 +40,7 @@ function Entry({ entry, gap }: { entry: CaseActivityEntry; gap: string | null })
       : stageWords(entry.stage);
 
   return (
-    <li className="relative pl-8">
+    <li className="relative min-w-0 pl-8">
       {/* The rail, drawn per entry so the last one stops rather than trailing off. */}
       <span
         className="absolute left-[11px] top-6 h-[calc(100%-0.5rem)] w-px bg-border"
@@ -50,9 +50,14 @@ function Entry({ entry, gap }: { entry: CaseActivityEntry; gap: string | null })
         <Icon className="h-3 w-3 text-muted-foreground" />
       </span>
 
-      <div className="pb-6">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-[13px] font-medium text-foreground">{entry.title}</span>
+      <div className="min-w-0 pb-6">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+          {/* A document entry's title is a filename, and a filename has no
+              spaces to break at -- without this it widens the rail and the
+              whole panel scrolls sideways. */}
+          <span className="break-words text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
+            {entry.title}
+          </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
             {KIND_LABEL[entry.kind] ?? entry.kind}
           </span>
@@ -63,7 +68,7 @@ function Entry({ entry, gap }: { entry: CaseActivityEntry; gap: string | null })
           )}
         </div>
 
-        <p className="mt-1 text-[12px] text-muted-foreground">
+        <p className="mt-1 break-words text-[12px] text-muted-foreground">
           {entry.actor_name ?? "Name not recorded"}
           {entry.actor_role && entry.actor_role !== entry.actor_name
             ? ` · ${entry.actor_role.replace(/_/g, " ")}`
@@ -74,7 +79,7 @@ function Entry({ entry, gap }: { entry: CaseActivityEntry; gap: string | null })
         </p>
 
         {entry.detail && (
-          <p className="mt-2 border-l-2 border-border pl-3 text-[13px] leading-relaxed text-foreground">
+          <p className="mt-2 break-words border-l-2 border-border pl-3 text-[13px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
             {entry.detail}
           </p>
         )}
@@ -107,7 +112,7 @@ export function CaseTimeline({ caseId, limit }: { caseId: string; limit?: number
   }
 
   return (
-    <ol className="mt-1">
+    <ol className="mt-1 min-w-0">
       {rows.map((entry, index) => (
         <Entry
           key={`${entry.kind}-${entry.happened_at}-${index}`}

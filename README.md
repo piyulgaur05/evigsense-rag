@@ -181,8 +181,6 @@ puts everything back on LM Studio.
 | `EMBED_BASE_URL` / `EMBED_MODEL` | Embedding endpoint + model (`Qwen/Qwen3-VL-Embedding-2B` on vLLM) |
 | `EMBED_DIMENSIONS` | MRL truncation width sent as OpenAI `dimensions`. Leave empty for LM Studio |
 | `EMBEDDING_DIM` | Must match `EMBED_DIMENSIONS` and the `vector(N)` column (default `1024`) |
-| `RERANK_BASE_URL` / `RERANK_MODEL` | Cross-encoder rerank. Empty `RERANK_MODEL` disables it |
-| `RERANK_CANDIDATES` / `RERANK_TOP_K` | Pool pulled from pgvector (50) then kept after rerank (8) |
 | `LMSTUDIO_EMBED_MODEL` | Legacy fallback when `EMBED_MODEL` is unset |
 | `OCR_BACKEND` | `lmstudio` (VLM) or `chandra-native` |
 | `OCR_MODEL` | Chandra model id in LM Studio |
@@ -198,10 +196,9 @@ Browser → Kong :8000 → GoTrue / PostgREST / Storage / Realtime / Edge Functi
 Edge Functions → vLLM :8101  Qwen3.5-35B-A3B         (chat: assistant, summary, metadata, tags)
               → vLLM :8102  chandra-ocr-2           (OCR, images via chat completions)
               → vLLM :8103  Qwen3-VL-Embedding-2B   (embeddings, MRL -> 1024)
-              → vLLM :8104  Qwen3-VL-Reranker-2B    (optional rerank stage)
               → LM Studio :1234                     (translation + Whisper)
 
-All four vLLM servers run on one DGX Spark via docker-compose.models.yml.
+All three vLLM servers run on one DGX Spark via docker-compose.models.yml.
 ```
 
 ## Procurement
@@ -310,7 +307,6 @@ CHAT_BASE_URL=https://evigsense.ngrok.dev/v1          # Qwen/Qwen3.5-35B-A3B
 TRANSLATE_BASE_URL=https://evigsense.ngrok.dev/v1
 EMBED_BASE_URL=https://evigsense-ai-service.ngrok.app/v1   # Qwen/Qwen3-VL-Embedding-2B
 EMBED_DIMENSIONS=                                     # server has no MRL; truncated client-side
-RERANK_MODEL=                                         # that host serves no /v1/rerank -> stage off
 ```
 
 **VRAM — measured on an 8 GB RTX 4070 Laptop.** `chandra-ocr-2` is a 5.3B
@@ -346,39 +342,30 @@ state), so 12k context is affordable; `OCR_MAX_TOKENS=8192` leaves room for the
 page image inside it. Steady state is ~7.1 GB of the 8 GB card, and a single-page
 PDF round-trips through the relay in **~15 s**.
 
-Do **not** run `docker-compose.vllm.yml` (embed/rerank) alongside this on an 8 GB
-card — those want ~5 GB of their own.
+Do **not** run `docker-compose.vllm.yml` (embed) alongside this on an 8 GB
+card — it wants ~5 GB of its own.
 
 ## Model servers on a CUDA host (x86_64)
 
-`docker/docker-compose.vllm.yml` runs the two roles LM Studio cannot serve, and
-joins the app's compose project so edge functions reach them by service name:
+`docker/docker-compose.vllm.yml` runs the one role LM Studio cannot serve, and
+joins the app's compose project so edge functions reach it by service name:
 
 | Port | Role | Model | Route the app calls |
 |------|------|-------|---------------------|
 | 8103 | embed | `Qwen/Qwen3-VL-Embedding-2B` | `POST /v1/embeddings` |
-| 8104 | rerank | `Qwen/Qwen3-VL-Reranker-2B` | `POST /v1/rerank` |
 
-Chat, translation and OCR stay on LM Studio. Fetch the reranker chat template
-once (it ships in the Qwen repo, not with the weights), then start:
+Chat, translation and OCR stay on LM Studio.
 
 ```sh
-curl -fsSL -o docker/volumes/vllm/reranker_template.jinja   https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/reranker_template.jinja
-
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.vllm.yml up -d
 ```
 
 **VRAM:** unlike the Spark's unified pool, `--gpu-memory-utilization` here is a
-fraction of dedicated VRAM, and the two services add up. **Measured on an 8 GB
-RTX 4070 Laptop:** even at fp8, `vllm-embed` alone needs fraction ~0.70 (~5.2 GB)
-to start reliably — weights, CUDA graph capture, and KV cache all count against
-the budget. A same-size reranker needs a comparable budget, so **the two cannot
-be resident together on an 8 GB card**; starting `vllm-rerank` while `vllm-embed`
-already holds its ~5 GB fails with "No available memory for the cache blocks."
-On this class of card, run `up -d vllm-embed` alone and leave `RERANK_MODEL`
-empty — reranking is optional and `rag-assistant` falls back to vector-order
-retrieval automatically if the rerank call fails. A 16 GB+ card fits both at
-fp8; 24 GB+ fits both at bf16 (`VLLM_QUANTIZATION=`).
+fraction of dedicated VRAM. **Measured on an 8 GB RTX 4070 Laptop:** even at fp8,
+`vllm-embed` needs fraction ~0.70 (~5.2 GB) to start reliably — weights, CUDA
+graph capture, and KV cache all count against the budget. That is most of the
+card, so do not run `docker-compose.ocr.yml` beside it here. A 24 GB+ card runs
+it at bf16 (`VLLM_QUANTIZATION=`).
 
 The `VLLM_CUDA_*_MEM` vars are deliberately separate from the Spark's
 `VLLM_*_MEM`: those are fractions of a 119 GB unified pool, so reusing `0.08`
@@ -386,7 +373,7 @@ here would request 0.6 GB on an 8 GB card and vLLM would refuse to start.
 
 ## Model servers on DGX Spark
 
-`docker/docker-compose.models.yml` runs all four model roles as vLLM servers on a
+`docker/docker-compose.models.yml` runs all three model roles as vLLM servers on a
 DGX Spark (GB10 / Grace Blackwell, `sm_121a`, arm64):
 
 | Port | Role | Model | App variable |
@@ -394,16 +381,9 @@ DGX Spark (GB10 / Grace Blackwell, `sm_121a`, arm64):
 | 8101 | chat | `Qwen/Qwen3.5-35B-A3B` | `CHAT_BASE_URL` |
 | 8102 | ocr | `datalab-to/chandra-ocr-2` | `OCR_BASE_URL` |
 | 8103 | embed | `Qwen/Qwen3-VL-Embedding-2B` | `EMBED_BASE_URL` |
-| 8104 | rerank | `Qwen/Qwen3-VL-Reranker-2B` | `RERANK_BASE_URL` |
 
 ### Before the first start
 
-The reranker needs a chat template that ships with the Qwen3-VL-Embedding repo
-rather than with the weights. Without it `vllm-rerank` exits immediately:
-
-```sh
-curl -fsSL -o docker/volumes/vllm/qwen3_vl_reranker.jinja   https://raw.githubusercontent.com/QwenLM/Qwen3-VL-Embedding/main/examples/qwen3_vl_reranker.jinja
-```
 
 ### Start
 
@@ -422,7 +402,7 @@ when remote. Both forms are written out in `docker/.env.example`.
 
 Spark has **one ~119.7 GiB unified pool** shared by the OS, page cache, model
 weights and KV cache — there is no separate VRAM. Every
-`--gpu-memory-utilization` is a fraction of that *whole* pool and the four
+`--gpu-memory-utilization` is a fraction of that *whole* pool and the three
 services **add up**:
 
 | Service | `*_MEM` | Approx. |
@@ -430,18 +410,23 @@ services **add up**:
 | chat | 0.45 | ~54 GiB |
 | ocr | 0.15 | ~18 GiB |
 | embed | 0.08 | ~10 GiB |
-| rerank | 0.08 | ~10 GiB |
-| **total** | **0.76** | **~92 GiB**, ~28 GiB headroom |
+| **total** | **0.68** | **~82 GiB**, ~38 GiB headroom |
 
 Raise one and you must lower another. Two further notes:
 
-- Services start **sequentially** via `depends_on: service_healthy`. Four models
+- Services start **sequentially** via `depends_on: service_healthy`. Three models
   warming up at once spikes allocation well above steady state and OOMs the box.
   First boot is slow because weights download; later boots reuse the `hf-cache`
   volume.
 - **Prefer NVFP4 weights on Blackwell.** It reduces memory pressure more than any
-  other single change, which is what buys you room to run four models at once.
+  other single change, which is what buys you room to run three models at once.
   Set `CHAT_MODEL_ID` to an NVFP4 build if one is published for your chat model.
+- **Keep chat on a Mixture-of-Experts.** `Qwen3.5-35B-A3B` activates ~3B
+  parameters per token, so it decodes about an order of magnitude faster than a
+  dense model of similar total size. A dense Llama-3.1-70B was measured here at
+  ~5 tok/s, which timed out every `translate-markdown` request at 180 s.
+  Translation generates thousands of tokens per document and is the workload
+  that sets this floor.
 - If Spark reports memory pressure despite apparently free capacity, drop the
   page cache: `sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'`.
 
@@ -452,7 +437,7 @@ which is the supported path. It must be an **arm64 image built for `sm_121a`** �
 stock x86 vLLM images will not run. Community GB10 builds track vLLM `main` more
 closely if you need a newer feature; pin a digest rather than a moving tag.
 
-## Embeddings and reranking (Qwen3-VL on vLLM)
+## Embeddings (Qwen3-VL on vLLM)
 
 Retrieval uses **Qwen3-VL-Embedding-2B**, a multimodal embedding model: it embeds
 text *and* page images into one space, which matters for scanned documents where
@@ -477,8 +462,7 @@ means migrating the column and re-embedding every document.
 > hard to diagnose later. `dimensions` is likewise a vLLM-only parameter.
 
 LM Studio remains fine for chat, translation and OCR, where the `model` field is
-honoured normally. Reranking has no LM Studio path at all: `POST /v1/rerank`
-answers `"Unexpected endpoint or method"`.
+honoured normally.
 
 Once the endpoint is up:
 
@@ -489,18 +473,6 @@ EMBED_MODEL=Qwen/Qwen3-VL-Embedding-2B
 EMBED_DIMENSIONS=1024
 ```
 
-Reranking is **opt-in**. Leave `RERANK_MODEL` empty and the pipeline skips it
-entirely. With it set, `rag-assistant` pulls `RERANK_CANDIDATES` (50) chunks from
-pgvector, scores them with the cross-encoder, and keeps `RERANK_TOP_K` (8):
-
-```sh
-RERANK_BASE_URL=http://your-vllm-host:8001/v1
-RERANK_MODEL=Qwen/Qwen3-VL-Reranker-2B
-```
-
-A reranker that is down or slow is non-fatal — retrieval logs a warning and
-falls back to vector ordering. Note `Qwen3-VL-Reranker` supports neither
-quantization nor MRL, so it has no LM Studio path at all.
 
 After changing any of these, reload the edge runtime and check the boot log,
 which prints the resolved endpoint per role and warns if an HF-style model id is

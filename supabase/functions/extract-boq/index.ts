@@ -60,17 +60,57 @@ Rules:
 - If the text is not a bill of quantities at all, return {"lines": [], "notes": "why"}.
 - notes is one short sentence for the reader: what you read, and anything you had to assume.`;
 
-/** Models wrap JSON in fences and prose however often you ask them not to. */
+/**
+ * Models wrap JSON in fences and prose however often you ask them not to.
+ *
+ * The first `{` in the answer is not reliably the answer. A thinking model
+ * restates the format it was asked for -- `{"lines": [...], "notes": "..."}`,
+ * ellipses and all -- before it writes anything real, so taking the first
+ * brace and the last one produces a span that cannot parse. Every balanced
+ * object in the text is tried instead, longest first, and the first one that
+ * parses wins.
+ */
 function parseJsonObject(raw: string): unknown {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start === -1 || end <= start) throw new Error("The model did not return JSON");
-    return JSON.parse(cleaned.slice(start, end + 1));
+    // Ignored: the answer has prose around it, so go looking for the object.
   }
+
+  const candidates: string[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let j = i; j < cleaned.length; j++) {
+      const ch = cleaned[j];
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\" && inString) { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) { candidates.push(cleaned.slice(i, j + 1)); break; }
+      }
+    }
+  }
+
+  // Longest first: the real answer contains the whole bill, a restated
+  // template is a few dozen characters.
+  candidates.sort((a, b) => b.length - a.length);
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate);
+      if (value && typeof value === "object") return value;
+    } catch {
+      // Not this one.
+    }
+  }
+
+  throw new Error("The model did not return JSON");
 }
 
 /** "1,25,000.00" and "₹ 4.5 lakh" both reach us; only the first is a number. */
@@ -159,7 +199,21 @@ serve(async (req) => {
           content: `Read the bill of quantities out of this.\n\n---\n${trimmed}\n---`,
         },
       ],
-      { temperature: 0, max_tokens: 4000 },
+      {
+        temperature: 0,
+        // A thirty-line bill runs to about 3k tokens; the old 4k ceiling was
+        // spent on chain-of-thought before the answer began and the response
+        // came back cut off mid-sentence.
+        max_tokens: 8000,
+        // Constrained decoding: the backend can only emit a syntactically
+        // valid object, which is a stronger guarantee than asking for one.
+        response_format: { type: "json_object" },
+        // Qwen3.5 reasons in plain `content` with no <think> tags to strip,
+        // so a reasoning answer is indistinguishable from a real one. Turning
+        // thinking off is what actually stops the deliberation; the parser
+        // below is the belt to this pair of braces.
+        extra: { chat_template_kwargs: { enable_thinking: false } },
+      },
     );
 
     const object = parseJsonObject(answer) as { lines?: unknown[]; notes?: unknown };

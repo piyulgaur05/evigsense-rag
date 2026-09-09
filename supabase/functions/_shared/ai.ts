@@ -4,7 +4,6 @@
  * Inference is split across backends by ROLE:
  *   - chat      -> remote vLLM (CHAT_BASE_URL), e.g. https://evigsense.ngrok.dev/v1
  *   - embed     -> vLLM (Qwen3-VL-Embedding-2B), or LM Studio
- *   - rerank    -> vLLM (Qwen3-VL-Reranker-2B); optional, skipped when unset
  *   - ocr       -> LM Studio (Chandra VLM)
  *   - translate -> LM Studio (dedicated small translator)
  *   - audio     -> LM Studio (Whisper), disabled by default
@@ -15,13 +14,12 @@
  * <PREFIX>_API_KEY / <PREFIX>_MODEL.
  */
 
-export type AiRole = "chat" | "translate" | "embed" | "rerank" | "ocr" | "audio";
+export type AiRole = "chat" | "translate" | "embed" | "ocr" | "audio";
 
 const ROLE_PREFIX: Record<AiRole, string> = {
   chat: "CHAT",
   translate: "TRANSLATE",
   embed: "EMBED",
-  rerank: "RERANK",
   ocr: "OCR",
   audio: "WHISPER",
 };
@@ -63,7 +61,7 @@ function baseUrlFor(role: AiRole): string {
  *
  * The model fallback is endpoint-aware on purpose: with chat pointed at a remote
  * vLLM, blindly inheriting the chat model id would send e.g.
- * `Qwen/Qwen3.5-35B-A3B` to LM Studio (or `chandra-ocr-2` to vLLM). A role only
+ * the 70B chat repo id to LM Studio (or `chandra-ocr-2` to vLLM). A role only
  * inherits the chat model when it resolves to the same base URL as chat.
  */
 export function getEndpoint(role: AiRole): AiEndpoint {
@@ -91,15 +89,6 @@ export function getTranslateModel(): string {
 
 export function getEmbedModel(): string {
   return env("EMBED_MODEL") ?? env("LMSTUDIO_EMBED_MODEL") ?? "bge-m3";
-}
-
-export function getRerankModel(): string {
-  return env("RERANK_MODEL") ?? "";
-}
-
-/** Reranking is opt-in: with no model configured the pipeline skips it. */
-export function isRerankEnabled(): boolean {
-  return getRerankModel().length > 0;
 }
 
 /**
@@ -132,12 +121,8 @@ let configLogged = false;
 export function logAiConfig(): void {
   if (configLogged) return;
   configLogged = true;
-  const roles: AiRole[] = ["chat", "translate", "embed", "rerank", "ocr", "audio"];
+  const roles: AiRole[] = ["chat", "translate", "embed", "ocr", "audio"];
   for (const role of roles) {
-    if (role === "rerank" && !isRerankEnabled()) {
-      console.log(`[ai] rerank    -> disabled (set RERANK_MODEL to enable)`);
-      continue;
-    }
     const ep = getEndpoint(role);
     let model = ep.model;
     if (role === "embed") {
@@ -150,17 +135,14 @@ export function logAiConfig(): void {
   // A HuggingFace-style repo id ("Qwen/Qwen3-VL-Embedding-2B") pointed at
   // LM Studio is always a misconfiguration: LM Studio uses its own short ids.
   // Without this the failure surfaces much later as an opaque 400.
-  for (const role of ["embed", "rerank"] as AiRole[]) {
-    if (role === "rerank" && !isRerankEnabled()) continue;
-    const ep = getEndpoint(role);
-    const model = role === "embed" ? getEmbedModel() : getRerankModel();
-    if (model.includes("/") && ep.baseUrl === getLmStudioBaseUrl()) {
-      console.warn(
-        `[ai] ${role.toUpperCase()}_MODEL="${model}" looks like a vLLM/HF repo id but ` +
-          `${ROLE_PREFIX[role]}_BASE_URL is unset, so it resolves to LM Studio ` +
-          `(${ep.baseUrl}). Set ${ROLE_PREFIX[role]}_BASE_URL to the vLLM endpoint.`,
-      );
-    }
+  const embedEp = getEndpoint("embed");
+  const embedModel = getEmbedModel();
+  if (embedModel.includes("/") && embedEp.baseUrl === getLmStudioBaseUrl()) {
+    console.warn(
+      `[ai] EMBED_MODEL="${embedModel}" looks like a vLLM/HF repo id but ` +
+        `EMBED_BASE_URL is unset, so it resolves to LM Studio ` +
+        `(${embedEp.baseUrl}). Set EMBED_BASE_URL to the vLLM endpoint.`,
+    );
   }
 }
 
@@ -363,67 +345,6 @@ export async function embed(input: string, retries = 3): Promise<number[]> {
   }
 
   throw new Error("Failed to generate embedding after retries");
-}
-
-export interface RerankHit {
-  /** Index into the `documents` array that was passed in. */
-  index: number;
-  score: number;
-}
-
-/**
- * Cross-encoder reranking over the vector-search candidates.
- *
- * Targets the Jina/Cohere-compatible `/rerank` route that vLLM exposes for
- * scoring models (Qwen3-VL-Reranker-2B). Returns hits ordered best-first.
- *
- * Callers should treat a throw as non-fatal and fall back to vector order --
- * a reranker being down should degrade result quality, not break retrieval.
- */
-export async function rerank(
-  query: string,
-  documents: string[],
-  options: { topN?: number; signal?: AbortSignal } = {},
-): Promise<RerankHit[]> {
-  if (documents.length === 0) return [];
-
-  const ep = getEndpoint("rerank");
-  const model = getRerankModel();
-  if (!model) throw new Error("RERANK_MODEL is not set");
-
-  const body: Record<string, unknown> = { model, query, documents };
-  if (options.topN !== undefined) body.top_n = options.topN;
-
-  const res = await fetch(`${ep.baseUrl}/rerank`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${ep.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Rerank failed (${res.status}) [endpoint=${ep.baseUrl}, model=${model}]: ${await res.text()}`,
-    );
-  }
-
-  const data = await res.json();
-  const rows = Array.isArray(data?.results) ? data.results : data?.data;
-  if (!Array.isArray(rows)) {
-    throw new Error("Rerank response had no results array");
-  }
-
-  return rows
-    .map((r: Record<string, unknown>) => ({
-      index: Number(r.index),
-      // vLLM reports relevance_score; other servers use score.
-      score: Number(r.relevance_score ?? r.score ?? 0),
-    }))
-    .filter((h: RerankHit) => Number.isInteger(h.index) && h.index >= 0 && h.index < documents.length)
-    .sort((a: RerankHit, b: RerankHit) => b.score - a.score);
 }
 
 export async function transcribeAudio(
