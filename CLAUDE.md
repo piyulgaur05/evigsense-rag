@@ -98,6 +98,47 @@ The embedding server serves 2048-dim vectors with no Matryoshka support, so
 OCR runs on an 8 GB RTX 4070 and is tuned tightly — see the "Chandra OCR on this
 machine" section of README.md before changing any `VLLM_CUDA_OCR_*` value.
 
+## Air-gapped edge functions
+
+Every edge function imports its deps (`esm.sh`, `deno.land`, `jsr:`) from the
+network at boot — normal for Deno, but this deployment has to run with no
+internet at all. What makes that work is the `deno-cache` docker volume
+(`DENO_DIR: /deno-dir` on the `functions` service in `docker-compose.yml`):
+Deno's own module cache is content-addressed by URL and shared by the main
+dispatcher *and* every per-function worker, so once a module has been fetched
+once, it never needs the network again — including across `--force-recreate`,
+since it's a named volume, not the container's disposable filesystem.
+
+An `--import-map` flag pointed at a hand-vendored `supabase/functions/vendor/`
+directory was tried first and reverted: it only applies to the main
+dispatcher's own two imports, not the `UserWorker` each function boots into
+(confirmed by testing on a genuinely fresh container, not trusting a
+`docker restart` result — a plain restart keeps the writable layer and made an
+unrelated fix look like it worked). The cache volume covers all of it with one
+mechanism, so don't reintroduce the vendor/import-map path.
+
+**Any new function, or an existing one gaining a new remote import, needs one
+warm-up call with real internet before its next offline `--force-recreate`,**
+or it 500s exactly like `paddle-ocr`/`document-ocr` did the first time this was
+missed:
+
+```bash
+cd supabase/functions
+FUNCS=$(ls -d */ | sed 's#/##' | grep -v -E '^(_shared|main)$')
+TOKEN='<SERVICE_ROLE_KEY>'
+for f in $FUNCS; do
+  curl -s -m 20 -o /dev/null -w "$f: HTTP %{http_code}\n" \
+    -X POST "http://localhost:8000/functions/v1/$f" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"documentId":"00000000-0000-0000-0000-000000000000"}'
+done
+```
+
+A 401/500 back is fine (it means the function's code ran, just rejected the
+fake token/id) — the goal is exercising the module graph, not a real result.
+Verify it actually stuck with `docker logs jyoma-edge-functions | grep -c '^Download'`
+after a `--force-recreate` — must be `0`.
+
 ## Layout
 
 - `src/features/procurement/`, `src/pages/procurement/` — the procurement portal.

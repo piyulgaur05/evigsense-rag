@@ -92,7 +92,12 @@ function worksheetsToSheetData(workbook: ExcelJS.Workbook): SheetData[] {
     worksheet.eachRow({ includeEmpty: true }, (row) => {
       const rowData: string[] = [];
       for (let c = 1; c <= colCount; c++) {
-        rowData.push(excelCellToString(row.getCell(c).value));
+        const cell = row.getCell(c);
+        // ExcelJS returns the master cell's value for every cell a merged
+        // range covers, so a title merged across a dozen columns would
+        // otherwise print the same text a dozen times instead of once.
+        const isNonMasterMerge = cell.isMerged && cell.master.address !== cell.address;
+        rowData.push(isNonMasterMerge ? "" : excelCellToString(cell.value));
       }
       data.push(rowData);
     });
@@ -337,19 +342,26 @@ export default function DocumentChat() {
           </div>
         )}
         
-        {/* Spreadsheet content */}
-        <ScrollArea className="flex-1">
+        {/* Spreadsheet content. Plain overflow-y-auto, not the shared
+            ScrollArea: Radix sets overflow-x:hidden on its viewport whenever
+            no horizontal ScrollBar subcomponent is rendered, which was
+            silently clipping a wide sheet instead of letting it scroll —
+            the nested overflow-x-auto below never got a chance to act. */}
+        <div className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
+            {/* A sheet wider than the pane scrolls sideways to reach its
+                later columns. Cells stay nowrap and untruncated (no
+                max-w/ellipsis) so a long requirement string is still fully
+                readable rather than hidden behind a hover tooltip. */}
+            <div className="border rounded-lg overflow-x-auto">
+              <table className="text-sm">
                 <tbody>
                   {currentSheet.data.map((row, rowIdx) => (
                     <tr key={rowIdx} className={rowIdx === 0 ? "bg-muted font-medium" : "border-t"}>
                       {row.map((cell, cellIdx) => (
-                        <td 
-                          key={cellIdx} 
-                          className="px-3 py-2 border-r last:border-r-0 whitespace-nowrap max-w-xs truncate"
-                          title={String(cell ?? "")}
+                        <td
+                          key={cellIdx}
+                          className="px-3 py-2 border-r last:border-r-0 whitespace-nowrap"
                         >
                           {cell ?? ""}
                         </td>
@@ -363,7 +375,7 @@ export default function DocumentChat() {
               <p className="text-center text-muted-foreground py-8">This sheet is empty</p>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     );
   };
@@ -399,12 +411,18 @@ export default function DocumentChat() {
                   {document.original_filename}
                 </span>
               </div>
-              <ScrollArea className="flex-1">
-                <div 
-                  className="p-6 prose prose-sm dark:prose-invert max-w-none"
+              {/* Plain overflow-y-auto, not the shared ScrollArea: Radix
+                  sets overflow-x:hidden on its viewport whenever no
+                  horizontal ScrollBar subcomponent is rendered, which
+                  clips a wide table instead of letting it scroll — the
+                  nested [&_table]:overflow-x-auto below never got a
+                  chance to act. */}
+              <div className="flex-1 overflow-y-auto">
+                <div
+                  className="p-6 prose prose-sm dark:prose-invert max-w-none [&_table]:block [&_table]:overflow-x-auto"
                   dangerouslySetInnerHTML={{ __html: wordContent }}
                 />
-              </ScrollArea>
+              </div>
             </div>
           ) : fileType === "excel" ? (
             // Excel Document Viewer

@@ -207,11 +207,25 @@ export function useAvailableActionsWithGaps(caseId: string | undefined) {
   });
 }
 
+const CASE_DOCUMENT_TERMINAL_STATUSES = new Set(["active", "completed", "failed"]);
+
 export function useCaseDocuments(caseId: string | undefined) {
   return useQuery({
     queryKey: procurementKeys.documents(caseId ?? ""),
     queryFn: () => documents.fetchCaseDocuments(caseId as string),
     enabled: Boolean(caseId),
+    // Embedding generation finishes in a background task well after the
+    // upload's own response returns, so nothing else re-fetches this once the
+    // attach mutation's one-time invalidation has fired. Poll until every
+    // attached document has reached a terminal status.
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? [];
+      const stillProcessing = rows.some((row) => {
+        const status = row.document?.status;
+        return status != null && !CASE_DOCUMENT_TERMINAL_STATUSES.has(status);
+      });
+      return stillProcessing ? 5000 : false;
+    },
   });
 }
 
@@ -444,7 +458,16 @@ export function useCaseDocumentReadiness(caseId: string | undefined) {
 export function useAskAboutCase() {
   return useMutation({
     mutationFn: assistant.askAboutCase,
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => {
+      // A signed-in tab left idle can end up sending an access token GoTrue no
+      // longer accepts; the edge function reports this as plain "Not
+      // authenticated", which reads as a dead end rather than what it is.
+      if (error.message === "Not authenticated") {
+        toast.error("Your session has expired. Refresh the page and sign in again.");
+        return;
+      }
+      toast.error(error.message);
+    },
   });
 }
 

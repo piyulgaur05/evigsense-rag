@@ -40,8 +40,16 @@ export function SideBySideView({
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const leftRowsRef = useRef<HTMLDivElement[]>([]);
   const rightRowsRef = useRef<HTMLDivElement[]>([]);
-  const syncing = useRef(false);
-  const syncTimer = useRef<number | null>(null);
+  // Scrolling one pane sets the other pane's scrollTop programmatically, which
+  // itself fires a "scroll" event on the destination. Suppress only that echo
+  // (per side) rather than a single shared flag — a shared flag also swallows
+  // the *source* pane's own subsequent scroll events during fast/continuous
+  // wheel scrolling, so most of the motion never reached the other side.
+  const suppressRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const suppressTimer = useRef<{ left: number | null; right: number | null }>({
+    left: null,
+    right: null,
+  });
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [translatedOffset, setTranslatedOffset] = useState<number>(() =>
@@ -60,8 +68,13 @@ export function SideBySideView({
   const rightBlocks = useMemo(() => parseMarkdownBlocks(rightMarkdown), [rightMarkdown]);
   const pairs = useMemo(() => alignBlockPairs(leftBlocks, rightBlocks), [leftBlocks, rightBlocks]);
 
-  leftRowsRef.current = [];
-  rightRowsRef.current = [];
+  // Only trim trailing slots left over from a longer previous block list —
+  // never blank-reset the array. A blank-reset here ran on every render
+  // (selection, hover, offset drag, …), and a scroll event that lands in the
+  // gap between that reset (render phase) and the row refs being reattached
+  // (commit phase) would see an empty array and silently no-op the sync.
+  if (leftRowsRef.current.length > pairs.length) leftRowsRef.current.length = pairs.length;
+  if (rightRowsRef.current.length > pairs.length) rightRowsRef.current.length = pairs.length;
 
   const equalizingRef = useRef(false);
   const equalizeRafRef = useRef<number | null>(null);
@@ -137,12 +150,12 @@ export function SideBySideView({
     };
   }, [leftMarkdown, rightMarkdown, equalizeRows, scheduleEqualize]);
 
-  const beginSync = (durationMs = 250) => {
-    syncing.current = true;
-    if (syncTimer.current) window.clearTimeout(syncTimer.current);
-    syncTimer.current = window.setTimeout(() => {
-      syncing.current = false;
-      syncTimer.current = null;
+  const suppressEcho = (side: "left" | "right", durationMs = 150) => {
+    suppressRef.current[side] = true;
+    if (suppressTimer.current[side] != null) window.clearTimeout(suppressTimer.current[side]!);
+    suppressTimer.current[side] = window.setTimeout(() => {
+      suppressRef.current[side] = false;
+      suppressTimer.current[side] = null;
     }, durationMs);
   };
 
@@ -165,7 +178,8 @@ export function SideBySideView({
   };
 
   const syncScroll = useCallback((source: "left" | "right") => {
-    if (syncing.current) return;
+    if (suppressRef.current[source]) return;
+    const dest: "left" | "right" = source === "left" ? "right" : "left";
     const srcContainer = source === "left" ? leftScrollRef.current : rightScrollRef.current;
     const dstContainer = source === "left" ? rightScrollRef.current : leftScrollRef.current;
     const srcRows = source === "left" ? leftRowsRef.current : rightRowsRef.current;
@@ -177,13 +191,21 @@ export function SideBySideView({
     const dstRow = dstRows[idx];
     if (!srcRow || !dstRow) return;
 
-    const srcRect = srcRow.getBoundingClientRect();
     const srcContRect = srcContainer.getBoundingClientRect();
-    const offsetWithinViewport = srcRect.top - srcContRect.top;
+    const offsetWithinViewport = srcRow.getBoundingClientRect().top - srcContRect.top;
 
-    const dstTargetTop = dstRow.offsetTop - offsetWithinViewport;
-    beginSync();
-    dstContainer.scrollTop = Math.max(0, dstTargetTop);
+    // Measured via getBoundingClientRect (viewport space) on both ends, not
+    // dstRow.offsetTop: the translated pane's offset control wraps its rows
+    // in a translateY(...) div, which becomes their offsetParent, so
+    // offsetTop silently drops the pane's own scroll/padding origin and the
+    // two panes drift out of alignment by roughly the applied offset.
+    const dstContRect = dstContainer.getBoundingClientRect();
+    const dstRowOffsetFromContentTop =
+      dstContainer.scrollTop + (dstRow.getBoundingClientRect().top - dstContRect.top);
+    const nextTop = Math.max(0, dstRowOffsetFromContentTop - offsetWithinViewport);
+    if (Math.abs(dstContainer.scrollTop - nextTop) < 1) return;
+    suppressEcho(dest);
+    dstContainer.scrollTop = nextTop;
   }, []);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
+import { edgeErrorMessage } from "@/lib/edgeErrorMessage";
 
 interface CollaboraEditorProps {
   documentId: string;
@@ -22,30 +23,6 @@ interface CollaboraEditorProps {
  *                           must be container-reachable (kong:8000), not localhost
  *  - WOPISrc                an opaque string the browser only passes through
  */
-/**
- * supabase-js collapses any non-2xx edge response into the useless
- * "Edge Function returned a non-2xx status code". The real cause is in the
- * response body, which is still readable through `error.context`.
- */
-async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
-  const res = (error as { context?: Response })?.context;
-  if (res && typeof res.clone === "function") {
-    try {
-      const body = await res.clone().json();
-      const detail = body?.details ?? body?.error;
-      if (detail) return String(detail);
-    } catch {
-      try {
-        const text = (await res.clone().text()).trim();
-        if (text) return text.slice(0, 500);
-      } catch {
-        /* body already consumed */
-      }
-    }
-  }
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 export function CollaboraEditor({ documentId, seedHtml, onReady }: CollaboraEditorProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string>("");

@@ -606,6 +606,7 @@ export default function TranslationMarkdown() {
       <Dialog open={sideBySideOpen} onOpenChange={setSideBySideOpen}>
         <DialogContent
           className="max-w-none w-screen h-screen sm:rounded-none p-0 gap-0 border-0 flex flex-col"
+          hideCloseButton
         >
           <div className="flex items-center justify-between px-4 py-2 border-b bg-card">
             <div className="flex items-center gap-2">

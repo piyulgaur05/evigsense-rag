@@ -224,11 +224,16 @@ serve(async (req) => {
     // Format embedding as PostgreSQL vector string format: [x,y,z,...]
     const embeddingString = `[${queryEmbedding.join(',')}]`;
 
-    // A case question searches the case's own paperwork. The ordinary search
-    // is scoped to what the asker uploaded, which is right for a personal
-    // archive and wrong here: a finance officer asking about a requisition is
-    // asking about a file the requester attached. The case function does its
-    // own permission check and returns nothing to anyone outside the case.
+    // A case question searches the case's own paperwork, and a single-document
+    // question searches that document alone -- both scoped by whatever the
+    // asker is actually allowed to view (owner, folder access, procurement
+    // case access, admin, signer), not by who uploaded the file. That matters
+    // for a document-chat opened from a procurement case: a finance officer
+    // asking about a requester's BOQ is asking about a file they can see but
+    // never created, and search_documents_by_embedding's owner-only filter
+    // silently returned nothing for that pairing. The ordinary (undirected)
+    // search stays scoped to what the asker themselves uploaded, which is
+    // right for a personal archive.
     const { data: similarChunks, error: searchError } = caseId
       ? await supabase.rpc('procurement_search_case_chunks', {
           _case_id: caseId,
@@ -238,13 +243,21 @@ serve(async (req) => {
           match_count: 30,
           _bidder_id: bidderId ?? null,
         })
-      : await supabase
-        .rpc('search_documents_by_embedding', {
+      : documentId
+      ? await supabase.rpc('search_document_chunks_for_user', {
+          _document_id: documentId,
+          _user_id: user.id,
           query_embedding: embeddingString,
           // Lower threshold when scoped to a single document (cross-lingual queries
           // e.g. English question on Chinese/Russian doc score much lower)
-          match_threshold: documentId ? 0.0 : 0.3,
-          match_count: documentId ? 50 : 15,
+          match_threshold: 0.0,
+          match_count: 50,
+        })
+      : await supabase
+        .rpc('search_documents_by_embedding', {
+          query_embedding: embeddingString,
+          match_threshold: 0.3,
+          match_count: 15,
           filter_user_id: user.id
         });
 

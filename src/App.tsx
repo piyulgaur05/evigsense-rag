@@ -117,7 +117,10 @@ const App = () => (
           <Route
             path="/procurement/admin"
             element={
-              <RequirePermission permission="master_data.manage" signInPath="/procurement/sign-in">
+              <RequirePermission
+                permission={["master_data.manage", "budget.manage", "vendor.manage"]}
+                signInPath="/procurement/sign-in"
+              >
                 <ProcurementAdmin />
               </RequirePermission>
             }

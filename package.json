@@ -16,7 +16,7 @@
     "check:procurement": "bash scripts/check-procurement.sh",
     "check:procurement:api": "node scripts/check-procurement-api.mjs",
     "gen:types": "bash scripts/gen-types.sh",
-    "bootstrap": "powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1"
+    "bootstrap": "bash scripts/bootstrap.sh"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",

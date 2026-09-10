@@ -255,7 +255,6 @@ export default function DocumentManagement() {
             metadata_field_definitions(label, field_type)
           )
         `)
-        .eq("created_by", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -440,14 +439,21 @@ export default function DocumentManagement() {
 
       if (storageError) throw storageError;
 
-      const { error: dbError } = await supabase
+      const { data: deletedRows, error: dbError } = await supabase
         .from("documents")
         .delete()
-        .eq("id", documentToDelete);
+        .eq("id", documentToDelete)
+        .select("id");
 
       if (dbError) throw dbError;
 
-      toast.success("File deleted successfully");
+      // RLS silently drops rows the caller isn't allowed to delete instead of
+      // erroring, so an empty result means nothing actually happened.
+      if (!deletedRows || deletedRows.length === 0) {
+        toast.error("You don't have permission to delete this file");
+      } else {
+        toast.success("File deleted successfully");
+      }
       loadDocuments();
     } catch (error) {
       console.error("Error deleting document:", error);
@@ -720,14 +726,26 @@ export default function DocumentManagement() {
       if (storageError) throw storageError;
 
       // Delete from database
-      const { error: dbError } = await supabase
+      const { data: deletedRows, error: dbError } = await supabase
         .from("documents")
         .delete()
-        .in("id", Array.from(selectedDocuments));
+        .in("id", Array.from(selectedDocuments))
+        .select("id");
 
       if (dbError) throw dbError;
 
-      toast.success(`${selectedDocuments.size} document(s) deleted successfully`);
+      // RLS silently drops rows the caller isn't allowed to delete instead of
+      // erroring, so the affected-row count can be lower than what was selected.
+      const deletedCount = deletedRows?.length ?? 0;
+      if (deletedCount === 0) {
+        toast.error("You don't have permission to delete the selected file(s)");
+      } else if (deletedCount < selectedDocuments.size) {
+        toast.warning(
+          `${deletedCount} of ${selectedDocuments.size} document(s) deleted — you don't have permission to delete the rest`,
+        );
+      } else {
+        toast.success(`${deletedCount} document(s) deleted successfully`);
+      }
       setSelectedDocuments(new Set());
       loadDocuments();
     } catch (error) {

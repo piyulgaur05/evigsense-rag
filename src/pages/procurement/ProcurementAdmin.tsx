@@ -774,10 +774,27 @@ function BudgetHeadPanel({
  * editing them from a form is a schema change wearing a dialog's clothes.
  */
 export default function ProcurementAdmin() {
+  const { can } = useAuth();
+  // master_data.manage is the full bundle (lookups, budget heads, vendors).
+  // budget.manage and vendor.manage are narrower grants — finance holds the
+  // first, the tender desk the second — that reach only their own section of
+  // this same route, with no path to the other sections or to the lookups.
+  const canAll = can("master_data.manage");
+  const canBudget = canAll || can("budget.manage");
+  const canVendor = canAll || can("vendor.manage");
+  const scopedSections = canAll ? [] : [canBudget && "budget", canVendor && "vendor"].filter(Boolean);
+  // With exactly one section granted, showing a one-item sidebar just to pick
+  // it is friction with no choice behind it — go straight to that section.
+  const onlySection = !canAll && scopedSections.length === 1 ? scopedSections[0] : null;
   const { data: lookups, isLoading } = useAllLookups();
   const { data: heads } = useBudgetHeads();
   const { data: vendors } = useAllVendors();
-  const [tab, setTab] = useState<string>(MASTER_DATA_CATEGORIES[0].kind);
+  const [tab, setTab] = useState<string>(() => {
+    if (onlySection === "budget") return BUDGET_TAB;
+    if (onlySection === "vendor") return VENDOR_TAB;
+    if (canAll) return MASTER_DATA_CATEGORIES[0].kind;
+    return canBudget ? BUDGET_TAB : VENDOR_TAB;
+  });
 
   const counts = useMemo(() => countByKind(lookups), [lookups]);
   const rows = useMemo(
@@ -809,77 +826,104 @@ export default function ProcurementAdmin() {
   return (
     <PortalLayout>
       <div className="px-5 py-8 sm:px-8">
-        <h1 className="font-display text-[2rem] text-foreground">Master data</h1>
+        <h1 className="font-display text-[2rem] text-foreground">
+          {onlySection === "budget" ? "Budget heads" : onlySection === "vendor" ? "Vendors" : "Master data"}
+        </h1>
         <p className="mt-2 max-w-2xl text-[14px] text-muted-foreground">
-          The lists every requisition picks from, the budget heads it is charged against, and
-          the register of firms that bid. Changes here reach every open case immediately,
-          because a case points at the entry rather than keeping a copy of its name.
+          {onlySection === "budget"
+            ? "The budget heads every requisition is charged against. Changes here reach every open case immediately, because a case points at the entry rather than keeping a copy of its name."
+            : onlySection === "vendor"
+              ? "The register of firms that bid. Changes here reach every open tender immediately, because a bidder points at the entry rather than keeping a copy of its name."
+              : "The lists every requisition picks from, the budget heads it is charged against, and the register of firms that bid. Changes here reach every open case immediately, because a case points at the entry rather than keeping a copy of its name."}
         </p>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[15rem_1fr]">
-          <nav className="h-fit rounded-lg border border-border bg-card p-2 lg:sticky lg:top-20">
-            <p className="px-2.5 pb-2 pt-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-              categories
-            </p>
-            {MASTER_DATA_CATEGORIES.map((entry) => {
-              const count = counts[entry.kind];
-              return (
-                <button
-                  key={entry.kind}
-                  type="button"
-                  onClick={() => setTab(entry.kind)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
-                    tab === entry.kind
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                >
-                  <span className="truncate">{entry.label}</span>
-                  <span className="ml-2 font-mono text-[11px] tabular-nums">
-                    {count?.active ?? 0}
-                  </span>
-                </button>
-              );
-            })}
+        <div
+          className={cn(
+            "mt-8 grid gap-6",
+            !onlySection && "lg:grid-cols-[15rem_1fr]",
+          )}
+        >
+          {!onlySection && (
+            <nav className="h-fit rounded-lg border border-border bg-card p-2 lg:sticky lg:top-20">
+              {canAll && (
+                <>
+                  <p className="px-2.5 pb-2 pt-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                    categories
+                  </p>
+                  {MASTER_DATA_CATEGORIES.map((entry) => {
+                    const count = counts[entry.kind];
+                    return (
+                      <button
+                        key={entry.kind}
+                        type="button"
+                        onClick={() => setTab(entry.kind)}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                          tab === entry.kind
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        <span className="truncate">{entry.label}</span>
+                        <span className="ml-2 font-mono text-[11px] tabular-nums">
+                          {count?.active ?? 0}
+                        </span>
+                      </button>
+                    );
+                  })}
 
-            <div className="my-2 border-t border-border" />
-
-            <button
-              type="button"
-              onClick={() => setTab(BUDGET_TAB)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
-                tab === BUDGET_TAB
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  <div className="my-2 border-t border-border" />
+                </>
               )}
-            >
-              <span className="truncate">Budget heads</span>
-              <span className="ml-2 font-mono text-[11px] tabular-nums">
-                {(heads ?? []).filter((head) => head.active).length}
-              </span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setTab(VENDOR_TAB)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
-                tab === VENDOR_TAB
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              {canBudget && (
+              <button
+                type="button"
+                onClick={() => setTab(BUDGET_TAB)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                  tab === BUDGET_TAB
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+              >
+                <span className="truncate">Budget heads</span>
+                <span className="ml-2 font-mono text-[11px] tabular-nums">
+                  {(heads ?? []).filter((head) => head.active).length}
+                </span>
+              </button>
               )}
-            >
-              <span className="truncate">Vendors</span>
-              <span className="ml-2 font-mono text-[11px] tabular-nums">
-                {(vendors ?? []).filter((vendor) => vendor.active && !vendor.blacklisted).length}
-              </span>
-            </button>
-          </nav>
+
+              {canVendor && (
+              <button
+                type="button"
+                onClick={() => setTab(VENDOR_TAB)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                  tab === VENDOR_TAB
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+              >
+                <span className="truncate">Vendors</span>
+                <span className="ml-2 font-mono text-[11px] tabular-nums">
+                  {(vendors ?? []).filter((vendor) => vendor.active && !vendor.blacklisted).length}
+                </span>
+              </button>
+              )}
+            </nav>
+          )}
 
           <div>
-            {tab === BUDGET_TAB ? (
+            {onlySection === "budget" ? (
+              <BudgetHeadPanel
+                heads={heads ?? []}
+                departments={departments}
+                categories={categories}
+              />
+            ) : onlySection === "vendor" ? (
+              <VendorPanel vendors={vendors ?? []} />
+            ) : tab === BUDGET_TAB ? (
               <BudgetHeadPanel
                 heads={heads ?? []}
                 departments={departments}

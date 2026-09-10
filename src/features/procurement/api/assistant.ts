@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { edgeErrorMessage } from "@/lib/edgeErrorMessage";
 
 export type CaseAnswerSource = {
   document_id?: string;
@@ -42,7 +43,7 @@ export async function askAboutCase(args: {
     },
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await edgeErrorMessage(error, "Could not reach the assistant."));
   if (data?.error) throw new Error(data.error);
 
   return {

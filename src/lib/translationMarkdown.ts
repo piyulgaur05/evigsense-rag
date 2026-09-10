@@ -113,7 +113,7 @@ export async function generateOCRMarkdown(
   for (let i = 0; i < pageImages.length; i++) {
     if (options.signal?.aborted) throw new Error("OCR aborted");
     options.onProgress?.({ current: i + 1, total: pageImages.length, phase: "ocr" });
-    const { data, error } = await supabase.functions.invoke("paddle-ocr", {
+    const { data, error } = await supabase.functions.invoke("document-ocr", {
       body: {
         documentId,
         mode: "page",
@@ -131,7 +131,7 @@ export async function generateOCRMarkdown(
   if (!merged) throw new Error("OCR returned empty markdown for all pages");
 
   options.onProgress?.({ current: pageImages.length, total: pageImages.length, phase: "saving" });
-  const { data: saved, error: saveErr } = await supabase.functions.invoke("paddle-ocr", {
+  const { data: saved, error: saveErr } = await supabase.functions.invoke("document-ocr", {
     body: { documentId, mode: "save", markdown: merged, pageCount: pageImages.length },
   });
   if (saveErr) throw new Error(saveErr.message || "Failed to save OCR markdown");
@@ -362,7 +362,7 @@ function splitLargeMarkdownBlock(block: string, maxChunkChars: number): string[]
   return parts;
 }
 
-// Image extraction is now handled inline by the paddle-ocr edge function.
+// Image extraction is now handled inline by the document-ocr edge function.
 
 
 export async function loadDocumentMarkdown(documentId: string) {

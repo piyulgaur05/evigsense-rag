@@ -65,7 +65,7 @@ It is reached from its own door on the landing page — not from the document wo
 | `/procurement/insights` | The pipeline in charts: workload, intake, spend, time at each desk, budget headroom, aging. |
 | `/procurement/new` | Raise a requisition. Needs `mpr.create`. `?case=PC-…` reopens a draft in progress. |
 | `/procurement/case/:caseNo` | The case file. |
-| `/procurement/admin` | Master data: the seven lookup lists and the budget heads. Needs `master_data.manage`, so only the procurement administrator sees the link. |
+| `/procurement/admin` | Master data: the seven lookup lists, the budget heads and the vendor register. Needs `master_data.manage` for the full screen (the procurement administrator); `budget.manage` alone (finance) or `vendor.manage` alone (the tender desk) each reach a scoped, single-section view of the same route. |
 
 Every route except the sign-in is wrapped in `RequirePermission`, which sends an unauthenticated visitor to `/procurement/sign-in` rather than to `/auth`.
 
@@ -479,18 +479,18 @@ The panel shows how much is ready (`procurement_case_document_readiness`), polls
 | `po_officer` | `po@jyoma.ai` | Purchase orders | 9 |
 | `receipt_payment_officer` | `payments@jyoma.ai` | Stores & accounts | 10 |
 
-### 5.2 The twenty-six permissions
+### 5.2 The twenty-seven permissions
 
-`view_self`, `mpr.create`, `mpr.view`, `oversight.view`, `finance.approve`, `finance.reject`, `tender.create`, `tec.evaluate`, `tec.chair`, `commercial.evaluate`, `commercial.opening.approve`, `dpc.approve`, `dpc.reject`, `dpc.chair`, `pnc.negotiate`, `pnc.chair`, `proposal.draft`, `proposal.approve`, `po.issue`, `grn.create`, `payment.process`, `master_data.manage`, `vendor.manage`, `manage_users`, `upload_docs`, `docs.upload`.
+`view_self`, `mpr.create`, `mpr.view`, `oversight.view`, `finance.approve`, `finance.reject`, `tender.create`, `tec.evaluate`, `tec.chair`, `commercial.evaluate`, `commercial.opening.approve`, `dpc.approve`, `dpc.reject`, `dpc.chair`, `pnc.negotiate`, `pnc.chair`, `proposal.draft`, `proposal.approve`, `po.issue`, `grn.create`, `payment.process`, `master_data.manage`, `budget.manage`, `vendor.manage`, `manage_users`, `upload_docs`, `docs.upload`.
 
 ### 5.3 Who holds what
 
 | Role | Permissions |
 |---|---|
-| `proc_admin` | all twenty-six |
+| `proc_admin` | all twenty-seven |
 | `purchase_head` | `view_self`, `mpr.view`, `oversight.view` |
 | `requester` | `view_self`, `mpr.create`, `mpr.view`, `upload_docs`, `docs.upload` |
-| `finance_user` | `view_self`, `mpr.view`, `finance.approve`, `finance.reject` |
+| `finance_user` | `view_self`, `mpr.view`, `finance.approve`, `finance.reject`, `budget.manage` |
 | `purchase_officer` | `view_self`, `mpr.view`, `tender.create`, `vendor.manage`, `proposal.draft`, `upload_docs`, `docs.upload` |
 | `tec_chairman` | `view_self`, `mpr.view`, `tec.evaluate`, `tec.chair`, `upload_docs`, `docs.upload` |
 | `tec_member` | `view_self`, `mpr.view`, `tec.evaluate`, `upload_docs`, `docs.upload` |
@@ -1419,7 +1419,8 @@ Sign in as `admin@jyoma.ai` and open **Master data** in the header (`/procuremen
 - Press the delete icon on an entry a case uses. Expect the confirmation to name how many records point at it and to say the field will be left blank; on one nothing uses, expect *"Nothing points at this entry."*
 - Add a budget head with an allocation, then charge a requisition to it. Come back and confirm **Committed** and **Left** have moved — those two columns are read from `procurement_budget_ledger()`, never typed.
 - On the **Vendors** tab, add a firm, retire it, and confirm it disappears from the picker on a tender while the tab still lists it. Bar another with a reason and confirm the reason shows beside it. There is no delete button anywhere, which is deliberate.
-- Sign in as `finance@jyoma.ai`: no **Master data** link in the header, and opening `/procurement/admin` directly should bounce. Finance does hold `finance.approve`, so the budget-head *policy* would let it write; the route is gated on `master_data.manage`, which it does not hold.
+- Sign in as `finance@jyoma.ai`: a **Budget heads** link appears in the header (not the full **Master data** label, which is reserved for `master_data.manage`). Opening `/procurement/admin` shows only the budget-heads panel — no category sidebar, no **Vendors** tab — because finance holds `budget.manage`, not the broader bundle.
+- Sign in as `tender@jyoma.ai`: a **Vendors** link appears in the header instead. Opening `/procurement/admin` shows only the vendor register — no category sidebar, no **Budget heads** tab — because the tender desk holds `vendor.manage`, not the broader bundle. This is also what makes "Not on the register? Add the firm there first." on the bidder picker (`VendorPicker.tsx`) actually reachable for this role, rather than bouncing it at the route.
 
 ## 11. Known limits
 

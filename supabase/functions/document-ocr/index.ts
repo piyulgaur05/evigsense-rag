@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       } catch (pageErr) {
         const msg = pageErr instanceof Error ? pageErr.message : "Unknown error";
         console.error(
-          `paddle-ocr page ${body.pageNumber ?? "?"}/${body.totalPages ?? "?"} failed:`,
+          `document-ocr page ${body.pageNumber ?? "?"}/${body.totalPages ?? "?"} failed:`,
           msg,
         );
         // Don't fail the whole document — return a placeholder so the client can
@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error";
-    console.error("paddle-ocr error:", msg);
+    console.error("document-ocr error:", msg);
     return jsonResponse({ error: "OCR failed", details: msg }, 500);
   }
 });

@@ -173,8 +173,17 @@ services:
       # Must match the browser origin, or Collabora's postMessage channel is rejected.
       COLLABORA_FRAME_ANCESTORS: ${COLLABORA_FRAME_ANCESTORS:-http://localhost:8080}
       VERIFY_JWT: "false"
+      # Deno's on-disk module cache for every remote import (esm.sh, deno.land,
+      # jsr:), persisted in the deno-cache volume below. Shared by the main
+      # dispatcher AND every per-function UserWorker, so once warmed (see the
+      # "Air-gapped edge functions" section in CLAUDE.md), the whole functions
+      # container boots with zero network calls, surviving --force-recreate
+      # indefinitely. Any function gaining a new remote import needs one more
+      # warm call before its next offline recreate.
+      DENO_DIR: /deno-dir
     volumes:
       - ../supabase/functions:/home/deno/functions:ro
+      - deno-cache:/deno-dir
     command:
       - start
       - --main-service
@@ -288,3 +297,8 @@ services:
 volumes:
   db-data:
   storage-data:
+  # Deno's own module cache for the edge runtime. Once warmed (see
+  # "Air-gapped edge functions" in CLAUDE.md), every function's remote imports
+  # are served from here -- surviving `--force-recreate`, unlike the container's
+  # writable layer -- so the runtime needs zero internet after warm-up.
+  deno-cache:
